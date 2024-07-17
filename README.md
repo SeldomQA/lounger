@@ -1,2 +1,2 @@
-# seldom-x
+# lounger
 Next generation automated testing framework.
