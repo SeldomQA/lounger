@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "lounger"
+version = "0.1.0"
+description = "Next generation automated testing framework."
+authors = ["虫师 <defnngj@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.8"
+pytest-playwright = "^0.5.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[[tool.poetry.source]]
+name = "tsinghua"
+url = "https://pypi.tuna.tsinghua.edu.cn/simple/"
