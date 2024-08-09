@@ -2,7 +2,7 @@
 playwright demo
 
 run test：
-> pytest --browser=chromium  --headed -vs
+> pytest --browser=chromium --headed -vs test_playwright.py
 """
 import re
 import time
