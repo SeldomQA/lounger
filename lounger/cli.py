@@ -59,14 +59,15 @@ def create_scaffold(project_name: str, type: str) -> None:
     conftest_content = conftest_path.read_text(encoding='utf-8')
     create_folder(project_name)
     create_file(os.path.join(project_name, "conftest.py"), conftest_content)
+    create_folder(os.path.join(project_name, "reports"))
 
     web_ini = '''[pytest]
 base_url = https://cn.bing.com
-addopts = -vs --browser=chromium --headed 
+addopts = -s --browser=chromium --headed --html=./reports/result.html
 '''
     api_ini = '''[pytest]
 base_url = https://httpbin.org
-addopts = -vs 
+addopts = -s --html=./reports/result.html
 '''
 
     if type == "api":
