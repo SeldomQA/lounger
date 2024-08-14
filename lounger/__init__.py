@@ -18,3 +18,5 @@
 # under the License.
 
 from .pytest_extend.params import data, file_data
+
+__version__ = "0.1.0"
