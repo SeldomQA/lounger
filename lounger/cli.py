@@ -58,7 +58,6 @@ def create_scaffold(project_name: str, type: str) -> None:
     conftest_path = current_file.parent / "project_temp" / "conftest.py"
     conftest_content = conftest_path.read_text(encoding='utf-8')
     create_folder(project_name)
-    create_file(os.path.join(project_name, "conftest.py"), conftest_content)
     create_folder(os.path.join(project_name, "reports"))
 
     web_ini = '''[pytest]
