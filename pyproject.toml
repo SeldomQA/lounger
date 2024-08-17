@@ -16,6 +16,9 @@ pytest-rerunfailures = "^14.0"
 pytest-html = "^4.1.1"
 click = "^8.1.7"
 
+[tool.poetry.plugins."pytest11"]
+lounger = "lounger.plugin"
+
 [tool.poetry.scripts]
 lounger = "lounger.cli:main"
 
