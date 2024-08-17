@@ -61,10 +61,14 @@ def create_scaffold(project_name: str, type: str) -> None:
     create_folder(os.path.join(project_name, "reports"))
 
     web_ini = '''[pytest]
+log_format = %(asctime)s | %(levelname)-8s | %(filename)s | %(message)s
+log_date_format = %Y-%m-%d %H:%M:%S
 base_url = https://cn.bing.com
 addopts = -s --browser=chromium --headed --html=./reports/result.html
 '''
     api_ini = '''[pytest]
+log_format = %(asctime)s | %(levelname)-8s | %(filename)s | %(message)s
+log_date_format = %Y-%m-%d %H:%M:%S
 base_url = https://httpbin.org
 addopts = -s --html=./reports/result.html
 '''
