@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from typing import Any
 
@@ -10,6 +11,11 @@ html_title = "Lounger Test Report"
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_configure(config):
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s | %(levelname)-8s | %(filename)s | %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
     global html_title
     # Here we fetch the command-line argument using config object
     title = config.getoption("--html-title")
