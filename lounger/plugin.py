@@ -21,6 +21,20 @@ def pytest_configure(config):
     title = config.getoption("--html-title")
     if title:
         html_title = title
+    # add env markers
+    config.addinivalue_line(
+        "markers", "env(name): mark test to run only on named environment"
+    )
+
+
+def pytest_runtest_setup(item: Any) -> None:
+    """
+    Called to perform the setup phase for a test item.
+    """
+    env_names = [mark.args[0] for mark in item.iter_markers(name="env")]
+    if env_names:
+        if item.config.getoption("--env") not in env_names:
+            pytest.skip(f"test requires env in {env_names}")
 
 
 def pytest_html_report_title(report):
@@ -71,4 +85,10 @@ def pytest_addoption(parser: Any) -> None:
         action="store",
         default=[],
         help="Specifies the title of the pytest-html test report",
+    )
+    group.addoption(
+        "--env",
+        action="store",
+        default=[],
+        help="only run tests matching the environment {name}.",
     )
