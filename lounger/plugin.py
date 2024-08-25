@@ -1,10 +1,14 @@
 import logging
 from datetime import datetime
+from io import StringIO
 from typing import Any
 
 import pytest
+from loguru import logger
 
 from lounger.pytest_extend.screenshot import screenshot_base64
+
+LOG_STREAM = StringIO()
 
 html_title = "Lounger Test Report"
 
@@ -12,10 +16,17 @@ html_title = "Lounger Test Report"
 @pytest.hookimpl(tryfirst=True)
 def pytest_configure(config):
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.DEBUG,
         format='%(asctime)s | %(levelname)-8s | %(filename)s | %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
+    html = config.getoption("--html")
+    if html:
+        logger.remove()
+        logger.add(LOG_STREAM,
+                   format="{time: YYYY-MM-DD HH:mm:ss} | <level>{level: <8}</level> | {file: <10} | {message}",
+                   level="DEBUG")
+
     global html_title
     # Here we fetch the command-line argument using config object
     title = config.getoption("--html-title")
@@ -72,7 +83,16 @@ def pytest_runtest_makereport(item):
                 # add screenshot to HTML report.
                 image = screenshot_base64(page)
                 extra.append(pytest_html.extras.image(image, mime_type='image/png'))
-        report.extra = extra
+
+        # add Loguru log to HTML report.
+        log_content = LOG_STREAM.getvalue()
+        if log_content.strip():
+            extra.append(pytest_html.extras.text(log_content, "Loguru Log"))
+        # Empty memory stream
+        LOG_STREAM.truncate(0)
+        LOG_STREAM.seek(0)
+
+    report.extras = extra
 
 
 def pytest_addoption(parser: Any) -> None:
