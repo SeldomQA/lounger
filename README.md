@@ -1,16 +1,22 @@
 # lounger
+
 Next generation automated testing framework.
 
 ## feature
 
-* 支持`web`/`api`测试。
-* 支持脚手架，命令生成测试项目。
-* 支持数据库操作。
-* 更好用的数据驱动。
+🌟 支持`web`/`api`测试。
+
+🌟 提供脚手架生成自动化项目。
+
+🌟 更好用的数据驱动。
+
+🌟 支持数据库操作。
+
+🌟 已经配置好的测试报告（包含截图、日志）。
 
 ## framework
 
-lounger是不一个从零开始的自动化测试框架，建立在pytest生态的基础上，提供更加简单的使用体验。
+lounger不是一个从零开始的自动化测试框架，建立在`pytest`生态的基础上，提供更加简单的使用体验。
 
 ![](./images/framework.png)
 
@@ -24,7 +30,7 @@ cd lounger
 pip install .
 ```
 
-or 
+or
 
 ```shell
 pip install -U git+https://github.com/SeldomQA/lounger.git@main
