@@ -8,7 +8,7 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = ">=3.8"
 pytest-playwright = "^0.5.1"
-pytest-req = "^0.2.0"
+pytest-req = "^0.3.0"
 pyyaml = "^6.0.2"
 openpyxl = "^3.1.5"
 pymysql = "^1.1.1"
