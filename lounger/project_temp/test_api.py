@@ -4,6 +4,7 @@ requests test sample
 run test：
 > pytest -vs test_api.py
 """
+from pytest_req.assertions import expect
 
 
 def test_post_method(post, base_url):
@@ -11,7 +12,7 @@ def test_post_method(post, base_url):
     test post request
     """
     s = post(f'{base_url}/post', data={'key': 'value'})
-    assert s.status_code == 200
+    expect(s).to_be_ok()
 
 
 def test_get_method(get, base_url):
@@ -20,7 +21,7 @@ def test_get_method(get, base_url):
     """
     payload = {'key1': 'value1', 'key2': 'value2'}
     s = get(f"{base_url}/get", params=payload)
-    assert s.status_code == 200
+    expect(s).to_be_ok()
 
 
 def test_session(session, base_url):
