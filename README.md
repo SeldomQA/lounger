@@ -22,26 +22,24 @@ lounger不是一个从零开始的自动化测试框架，建立在`pytest`生�
 
 ## Install
 
-> 正在开发中，暂不提供pip安装。
+* pip安装。
 
 ```shell
-git clone https://github.com/SeldomQA/lounger
-cd lounger
-pip install .
+$ pip install lounger
 ```
 
-or
+* 体验最新的项目代码。
 
 ```shell
-pip install -U git+https://github.com/SeldomQA/lounger.git@main
+$ pip install -U git+https://github.com/SeldomQA/lounger.git@main
 ```
 
 此外，如果做Web自动化测试，请单独安装测试浏览器。
 
 ```shell
-playwright install chromium[可选]
-playwright install firefox[可选]
-playwright install webkit[可选]
+$ playwright install chromium[可选]
+$ playwright install firefox[可选]
+$ playwright install webkit[可选]
 ...
 ```
 
@@ -50,7 +48,7 @@ playwright install webkit[可选]
 lounger提供了脚手架，直接创建项目和使用。
 
 ```shell
-lounger --help
+$ lounger --help
 
 Usage: lounger [OPTIONS]
 
@@ -66,10 +64,10 @@ Options:
 * 创建web自动化测试项目。
 
 ```shell
-lounger -pw myweb
+$ lounger -pw myweb
+
 2024-08-17 22:05:04 | INFO     | cli.py | Start to create new test project: myweb
 2024-08-17 22:05:04 | INFO     | cli.py | CWD: D:\github\seldomQA\lounger
-
 2024-08-17 22:05:04 | INFO     | cli.py | created folder: myweb
 2024-08-17 22:05:04 | INFO     | cli.py | created folder: myweb\reports
 2024-08-17 22:05:04 | INFO     | cli.py | created file: myweb\test_web.py
@@ -79,7 +77,7 @@ lounger -pw myweb
 * 创建api自动化测试项目。
 
 ```shell
-lounger -pa myapi
+$ lounger -pa myapi
 
 2024-08-17 22:05:31 | INFO     | cli.py | Start to create new test project: myapi
 2024-08-17 22:05:31 | INFO     | cli.py | CWD: D:\github\seldomQA\lounger
@@ -93,8 +91,8 @@ lounger -pa myapi
 * 直接运行测试
 
 ```shell
-cd myweb  # or myapi
-pytest
+$ cd myweb  # or myapi
+$ pytest
 ```
 
 ## 示例
