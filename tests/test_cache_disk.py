@@ -1,17 +1,10 @@
-import hashlib
 import time
 
 import pytest
 
 from lounger.log import log
+from lounger.testdata import get_md5
 from lounger.utils import disk_cache
-
-
-def generate_md5(input_string):
-    """生成md5"""
-    md5_hash = hashlib.md5()
-    md5_hash.update(input_string.encode('utf-8'))
-    return md5_hash.hexdigest()
 
 
 @disk_cache()
@@ -20,7 +13,7 @@ def login_token(username: str, password: str):
     模拟：生成登录token
     """
     time.sleep(5)
-    token = generate_md5(username + password)
+    token = get_md5(username + password)
     return token
 
 

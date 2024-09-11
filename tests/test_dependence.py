@@ -1,21 +1,13 @@
-import hashlib
-
+from lounger.testdata import get_md5
 from lounger.utils import cache
 from lounger.utils import dependent_func
-
-
-def generate_md5(input_string):
-    """生成md5"""
-    md5_hash = hashlib.md5()
-    md5_hash.update(input_string.encode('utf-8'))
-    return md5_hash.hexdigest()
 
 
 def user_login(username, password):
     """
     模拟用户登录，获取登录token
     """
-    return generate_md5(username + password)
+    return get_md5(username + password)
 
 
 def setup_module():
