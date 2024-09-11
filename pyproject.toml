@@ -2,7 +2,7 @@
 name = "lounger"
 version = "0.1.0"
 description = "Next generation automated testing framework."
-authors = ["虫师 <defnngj@gmail.com>"]
+authors = ["bugmaster <defnngj@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
