@@ -103,4 +103,4 @@ $ pytest
 
 * seldom VS lounger
 
-![](./seldom_vs_lounger.md)
+👉[详细对比](./seldom_vs_lounger.md)
