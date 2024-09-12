@@ -6,6 +6,9 @@ seldom 是建立在 unittest单元测试框架的基础上的自动化测试框�
 lounger 是建立在 pytest单元测试框架的基础上的自动化测试框架，移植了seldom的部分功能，结合pytest的功能和生态优势开发，同样达到开箱即用。
 > lounger也并非完美无缺，内置的`pytest-html`样式和功能还有改进空间，不支持平台化。
 
+__注：你肯定会说 allure 更好用，需要单独安装 `allure`命令去启动一个服务才能看报告，这本身就不太`lounger`
+，对吧！你可以完全自行使用allure。__
+
 * seldom VS lounger
 
 > 这里仅罗列功能对比，至于选哪个，请自行结合业务和需求。
