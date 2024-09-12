@@ -98,3 +98,9 @@ $ pytest
 ## 示例
 
 [tests](./tests/) 提供了大量的示例学习。你会看到不少 seldom 类似的用法。
+
+## 对比
+
+* seldom VS lounger
+
+![](./seldom_vs_lounger.md)
