@@ -1,4 +1,4 @@
-## seldom vs pytest
+## seldom vs lounger
 
 seldom 是建立在 unittest单元测试框架的基础上的自动化测试框架，内置了非常多的功能达到开箱即用，并且支持 seldom-platform平台化。
 > seldom有一些先天的不足，例如在 并发方面，内置selenium的运行较慢等。
