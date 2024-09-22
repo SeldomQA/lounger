@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, UTC
 from io import StringIO
 from typing import Any
 
@@ -65,7 +65,7 @@ def pytest_html_results_table_header(cells):
 
 def pytest_html_results_table_row(report, cells):
     cells.insert(2, f"<td>{report.description}</td>")
-    cells.insert(3, f'<td class="col-time">{datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")}</td>')
+    cells.insert(3, f'<td class="col-time">{datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M:%S")}</td>')
 
 
 @pytest.hookimpl(hookwrapper=True)
