@@ -9,12 +9,12 @@ class UserApiObject(HttpRequest):
     API Object
     """
 
-    @api(describe="添加用例", status_code=200, ret="form.username")
+    @api(describe="添加用户", status_code=200, ret="form.username")
     def add_user(self, username):
         r = self.post("/post", data={"username": username})
         return r
 
-    @api(describe="删除用例", status_code=200, ret="data")
+    @api(describe="删除用户", status_code=200, ret="data")
     def del_user(self, username):
         r = self.delete("/delete", json={"username": username})
         return r
