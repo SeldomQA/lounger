@@ -18,7 +18,7 @@ __注：allure 显然是更好用的，但是，需要单独安装 `allure` 命�
 | 基于单元框架        | 🪨     | unittest                                  | 🪨      | pytest                                   |
 | web UI测试      | ✅      | 集成selenium，并二次开发 I️                       | ✅       | 集成`pytest-playwright`                    |
 | web UI断言      | ✅      | 内置（assertText、assertTitle、assertElement）等 | ✅       | `playwright`提供丰富断言                       |
-| Page Object模式 | ❌      | 未内置，推荐`poium`库                            | ❌       | 未内置，推荐`poium`库                           |
+| Page Object模式 | ❌      | 未内置，推荐`poium`库                            | ✅       | 支持 `Page objects`设计模式                    |
 | API 测试        | ✅      | 集成Requests，并二次开发                          | ✅       | 集成`pytest-req`                           |
 | API 断言        | ✅      | 内置（assertJSON、assertPath、assertSchema）等   | ✅       | `pytest-req`提供断言                         |
 | App UI测试      | ✅      | 集成Appium，并二次开发 I️                         | ❌       | 未集成App测试库                                |

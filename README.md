@@ -14,6 +14,8 @@ Next generation automated testing framework.
 
 🌟 已经配置好的测试报告（包含截图、日志）。
 
+🌟 天然支持`API objects`、`Page objects`设计模式。
+
 ## framework
 
 lounger不是一个从零开始的自动化测试框架，建立在`pytest`生态的基础上，提供更加简单的使用体验。
