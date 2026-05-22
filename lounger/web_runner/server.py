@@ -191,27 +191,30 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
         with _runs_lock:
             existing = list(run_info["logs"])
 
-        for line in existing[sent_count:]:
-            self._sse_event({"line": line})
-            sent_count += 1
-
-        while True:
-            try:
-                line = log_queue.get(timeout=1)
+        try:
+            for line in existing[sent_count:]:
                 self._sse_event({"line": line})
                 sent_count += 1
-            except queue.Empty:
-                with _runs_lock:
-                    status = run_info["status"]
-                if status in ("completed", "error"):
-                    self._sse_event({
-                        "line": "",
-                        "done": True,
-                        "exit_code": run_info.get("exit_code", -1),
-                        "status": status,
-                    })
-                    break
-                self._sse_event({"heartbeat": True})
+
+            while True:
+                try:
+                    line = log_queue.get(timeout=1)
+                    self._sse_event({"line": line})
+                    sent_count += 1
+                except queue.Empty:
+                    with _runs_lock:
+                        status = run_info["status"]
+                    if status in ("completed", "error"):
+                        self._sse_event({
+                            "line": "",
+                            "done": True,
+                            "exit_code": run_info.get("exit_code", -1),
+                            "status": status,
+                        })
+                        break
+                    self._sse_event({"heartbeat": True})
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def _sse_event(self, data: dict):
         payload = json.dumps(data, ensure_ascii=False)
