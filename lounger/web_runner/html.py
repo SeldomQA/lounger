@@ -45,6 +45,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .tree-node.tree-file { color: var(--text); }
 .tree-node.tree-case { color: var(--muted); }
 .tree-node.tree-case.selected { background: rgba(137,180,250,.08); border-left-color: var(--accent); }
+.tree-node.tree-case.just-run { background: rgba(166,227,161,.06); border-left-color: var(--green); }
 .tree-toggle { width: 16px; height: 16px; display: inline-flex; align-items: center;
   justify-content: center; font-size: 10px; flex-shrink: 0;
   transition: transform .15s; color: var(--muted); }
@@ -138,6 +139,7 @@ let currentRunId = null;
 let eventSource = null;
 let currentVerbosity = 'verbose';
 function setVerbosity(v) { currentVerbosity = v; }
+let lastRunIds = new Set();
 
 // ── fetch cases ──
 async function loadCases() {
@@ -233,6 +235,7 @@ function renderNode(node, depth) {
 function renderCaseNode(c, depth) {
   const indent = depth * 18;
   const sel = selectedIds.has(c.nodeid) ? ' selected' : '';
+  const runFlag = lastRunIds.has(c.nodeid) ? ' just-run' : '';
   const checked = selectedIds.has(c.nodeid) ? ' checked' : '';
   const desc = c.description ? c.description.trim() : '';
   const titleParts = [c.name];
@@ -241,7 +244,7 @@ function renderCaseNode(c, depth) {
   const tooltip = titleParts.join('\n');
 
   let html = '';
-  html += '<div class="tree-node tree-case' + sel + '" onclick="toggleCase(\'' + esc(c.nodeid) + '\', event)" style="padding-left:' + indent + 'px">';
+  html += '<div class="tree-node tree-case' + sel + runFlag + '" onclick="toggleCase(\'' + esc(c.nodeid) + '\', event)" style="padding-left:' + indent + 'px">';
   html += '<span class="tree-toggle leaf">▶</span>';
   html += '<input type="checkbox" ' + checked + ' onclick="event.stopPropagation(); toggleCase(\'' + esc(c.nodeid) + '\', event)">';
   html += '<span class="tree-label" title="' + esc(tooltip) + '">🧪 ' + esc(c.name) + '</span>';
@@ -348,7 +351,10 @@ function filterCases() {
 // ── execution ──
 async function runSelected() {
   if (selectedIds.size === 0) { alert('请先选择测试用例'); return; }
-  await startRun([...selectedIds]);
+  const ids = [...selectedIds];
+  for (const nid of ids) lastRunIds.add(nid);
+  renderTree();
+  await startRun(ids);
 }
 
 async function runAll() {
@@ -357,11 +363,16 @@ async function runAll() {
 }
 
 async function runSingle(nodeid) {
+  lastRunIds.add(nodeid);
+  renderTree();
   await startRun([nodeid]);
 }
 
 function runFile(nodeidsStr) {
-  startRun(JSON.parse(nodeidsStr));
+  const ids = JSON.parse(nodeidsStr);
+  for (const nid of ids) lastRunIds.add(nid);
+  renderTree();
+  startRun(ids);
 }
 
 async function startRun(nodeids) {
@@ -450,6 +461,7 @@ async function refreshCases() {
   btn.disabled = true;
   btn.textContent = '⏳ 刷新中...';
   try {
+    lastRunIds.clear();
     await fetch('/api/refresh', {method: 'POST'});
     await loadCases();
   } finally {
