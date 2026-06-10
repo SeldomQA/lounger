@@ -158,17 +158,22 @@ def pytest_collection_modifyitems(config, items):
 
             # Create a new function object with updated docstring
             func = item._obj
-            new_func = type(func)(
-                func.__code__,
-                func.__globals__,
-                name=func.__name__,
-                argdefs=func.__defaults__,
-                closure=func.__closure__
+            # Unwrap bound method to get the underlying function
+            if hasattr(func, "__func__"):
+                raw_func = func.__func__
+            else:
+                raw_func = func
+            new_func = type(raw_func)(
+                raw_func.__code__,
+                raw_func.__globals__,
+                raw_func.__name__,
+                raw_func.__defaults__,
+                raw_func.__closure__,
             )
             # Copy original function attributes
-            new_func.__dict__.update(func.__dict__)
+            new_func.__dict__.update(raw_func.__dict__)
             # Safely append case name to docstring (handle None cases)
-            new_func.__doc__ = (func.__doc__ or "") + " | " + case_name
+            new_func.__doc__ = (raw_func.__doc__ or "") + " | " + case_name
 
             # Replace the test item's function object
             item._obj = new_func
