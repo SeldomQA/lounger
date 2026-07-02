@@ -1,15 +1,14 @@
 import pytest
 
 from api.clients.posts_api import PostsAPI
-from lounger.utils.config_utils import ConfigUtils
+from lounger.settings import settings
 
 
 @pytest.fixture(scope="session")
 def env_config() -> dict:
     """Load the shared environment configuration."""
-    config = ConfigUtils("config/config.yaml")
     return {
-        "base_url": config.get_config("base_url"),
+        "base_url": settings.get("base_url"),
     }
 
 
@@ -17,3 +16,16 @@ def env_config() -> dict:
 def posts_api(env_config: dict) -> PostsAPI:
     """Posts API client fixture."""
     return PostsAPI(env_config["base_url"])
+
+
+# Optional database fixture example:
+#
+# from lounger.utils.variables import ExtractVar
+# from support.db import create_mysql_resource
+#
+# _extractor = ExtractVar()
+#
+# @pytest.fixture(scope="session")
+# def mysql_db():
+#     with create_mysql_resource(_extractor.config) as db:
+#         yield db

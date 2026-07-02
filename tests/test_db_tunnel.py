@@ -1,5 +1,11 @@
 from lounger.db_operation.fabric_tunnel import FabricSSHTunnel
 from lounger.db_operation.mysql_db import MySQLDB
+from lounger.db_operation.resource import (
+    MySQLConnectionConfig,
+    MySQLResource,
+    SSHTunnelConfig,
+    build_mysql_resource,
+)
 
 
 class DummyTunnelContext:
@@ -99,7 +105,7 @@ def test_mysql_from_ssh_tunnel(monkeypatch):
         fake_connect.kwargs = kwargs
         return DummyDBConnection()
 
-    monkeypatch.setattr("lounger.db_operation.mysql_db.FabricSSHTunnel", FakeTunnel)
+    monkeypatch.setattr("lounger.db_operation.resource.FabricSSHTunnel", FakeTunnel)
     monkeypatch.setattr("lounger.db_operation.mysql_db.pymysql.connect", fake_connect)
 
     db = MySQLDB.from_ssh_tunnel(
@@ -147,7 +153,7 @@ def test_mysql_from_ssh_tunnel_closes_tunnel_when_db_connect_fails(monkeypatch):
     def fake_connect(**kwargs):
         raise RuntimeError("db connect failed")
 
-    monkeypatch.setattr("lounger.db_operation.mysql_db.FabricSSHTunnel", FakeTunnel)
+    monkeypatch.setattr("lounger.db_operation.resource.FabricSSHTunnel", FakeTunnel)
     monkeypatch.setattr("lounger.db_operation.mysql_db.pymysql.connect", fake_connect)
 
     try:
@@ -190,3 +196,143 @@ def test_mysql_direct_connection(monkeypatch):
     assert fake_connect.kwargs["charset"] == "latin1"
 
     db.close()
+
+
+def test_mysql_resource_direct_connection(monkeypatch):
+    def fake_connect(**kwargs):
+        fake_connect.kwargs = kwargs
+        return DummyDBConnection()
+
+    monkeypatch.setattr("lounger.db_operation.mysql_db.pymysql.connect", fake_connect)
+
+    resource = MySQLResource(
+        connection=MySQLConnectionConfig(
+            host="db.example.com",
+            port=3306,
+            user="dbuser",
+            password="dbpass",
+            database="demo",
+        )
+    )
+
+    db = resource.connect()
+
+    assert isinstance(db, MySQLDB)
+    assert fake_connect.kwargs["host"] == "db.example.com"
+    assert fake_connect.kwargs["port"] == 3306
+
+    resource.close()
+
+
+def test_mysql_resource_with_ssh_tunnel(monkeypatch):
+    tunnel_state = {"started": False, "closed": False}
+
+    class FakeTunnel:
+        def __init__(self, **kwargs):
+            FakeTunnel.kwargs = kwargs
+
+        def start(self):
+            tunnel_state["started"] = True
+            return 24406
+
+        def close(self):
+            tunnel_state["closed"] = True
+
+    def fake_connect(**kwargs):
+        fake_connect.kwargs = kwargs
+        return DummyDBConnection()
+
+    monkeypatch.setattr("lounger.db_operation.resource.FabricSSHTunnel", FakeTunnel)
+    monkeypatch.setattr("lounger.db_operation.mysql_db.pymysql.connect", fake_connect)
+
+    resource = MySQLResource(
+        connection=MySQLConnectionConfig(
+            host="mysql.internal",
+            port=3306,
+            user="dbuser",
+            password="dbpass",
+            database="demo",
+        ),
+        tunnel=SSHTunnelConfig(
+            ssh_host="jump.example.com",
+            ssh_port=22,
+            ssh_user="tester",
+            remote_host="mysql.internal",
+            remote_port=3306,
+            timeout=15,
+            ready_timeout=8.0,
+        ),
+    )
+
+    with resource as db:
+        assert isinstance(db, MySQLDB)
+        assert tunnel_state["started"] is True
+        assert FakeTunnel.kwargs["timeout"] == 15
+        assert FakeTunnel.kwargs["ready_timeout"] == 8.0
+        assert fake_connect.kwargs["host"] == "127.0.0.1"
+        assert fake_connect.kwargs["port"] == 24406
+
+    assert tunnel_state["closed"] is True
+
+
+def test_mysql_from_resource(monkeypatch):
+    def fake_connect(**kwargs):
+        return DummyDBConnection()
+
+    monkeypatch.setattr("lounger.db_operation.mysql_db.pymysql.connect", fake_connect)
+
+    resource = MySQLResource(
+        connection=MySQLConnectionConfig(
+            host="db.example.com",
+            port=3307,
+            user="dbuser",
+            password="dbpass",
+            database="demo",
+        )
+    )
+
+    db = MySQLDB.from_resource(resource)
+
+    assert isinstance(db, MySQLDB)
+
+
+def test_build_mysql_resource_from_mapping():
+    resource = build_mysql_resource(
+        {
+            "db_host": "db.example.com",
+            "db_port": 3308,
+            "db_user": "dbuser",
+            "db_password": "dbpass",
+            "db_database": "demo",
+        },
+        use_ssh_tunnel=False,
+    )
+
+    assert isinstance(resource, MySQLResource)
+    assert resource.connection_config.host == "db.example.com"
+    assert resource.connection_config.port == 3308
+    assert resource.tunnel_config is None
+
+
+def test_build_mysql_resource_from_callable_uses_tunnel():
+    values = {
+        "ssh_host": "jump.example.com",
+        "ssh_port": 22,
+        "ssh_user": "tester",
+        "remote_db_host": "mysql.internal",
+        "remote_db_port": 3306,
+        "db_user": "dbuser",
+        "db_password": "dbpass",
+        "db_database": "demo",
+        "ssh_timeout": 15,
+        "tunnel_ready_timeout": 9.0,
+    }
+
+    resource = build_mysql_resource(values.get)
+
+    assert isinstance(resource, MySQLResource)
+    assert resource.connection_config.user == "dbuser"
+    assert resource.tunnel_config is not None
+    assert resource.tunnel_config.ssh_host == "jump.example.com"
+    assert resource.tunnel_config.timeout == 15
+    assert resource.tunnel_config.ready_timeout == 9.0

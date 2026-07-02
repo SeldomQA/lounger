@@ -7,6 +7,7 @@ import pymysql.cursors
 
 from lounger.db_operation.base_db import SQLBase
 from lounger.db_operation.fabric_tunnel import FabricSSHTunnel
+from lounger.db_operation.resource import MySQLConnectionConfig, MySQLResource, SSHTunnelConfig
 
 
 class MySQLDB(SQLBase):
@@ -51,34 +52,39 @@ class MySQLDB(SQLBase):
         """
         Create a MySQL connection through a Fabric SSH tunnel
         """
-        ssh_tunnel = FabricSSHTunnel(
-            ssh_host=ssh_host,
-            ssh_port=ssh_port,
-            ssh_user=ssh_user,
-            ssh_private_key=ssh_private_key,
-            ssh_password=ssh_password,
-            remote_host=remote_db_host,
-            remote_port=remote_db_port,
-            local_port=local_port,
-            timeout=ssh_timeout,
-            ready_timeout=tunnel_ready_timeout,
-        )
-        tunnel_port = ssh_tunnel.start()
-        try:
-            db = cls(
+        resource = MySQLResource(
+            connection=MySQLConnectionConfig(
                 host="127.0.0.1",
-                port=tunnel_port,
+                port=local_port or 0,
                 user=db_user,
                 password=db_password,
                 database=db_database,
                 charset=db_charset,
-            )
-        except Exception:
-            ssh_tunnel.close()
-            raise
+            ),
+            tunnel=SSHTunnelConfig(
+                ssh_host=ssh_host,
+                ssh_port=ssh_port,
+                ssh_user=ssh_user,
+                ssh_private_key=ssh_private_key,
+                ssh_password=ssh_password,
+                remote_host=remote_db_host,
+                remote_port=remote_db_port,
+                local_port=local_port,
+                timeout=ssh_timeout,
+                ready_timeout=tunnel_ready_timeout,
+            ),
+        )
+        return resource.connect()
 
-        db._ssh_tunnel = ssh_tunnel
-        return db
+    @classmethod
+    def from_resource(
+            cls,
+            resource: MySQLResource,
+    ) -> "MySQLDB":
+        """
+        Create a MySQLDB instance from a managed resource.
+        """
+        return resource.connect()
 
     def close(self) -> None:
         """
