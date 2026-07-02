@@ -1,9 +1,10 @@
+import inspect
 import importlib.util
 from pathlib import Path
 from typing import Any, Callable
 
 from lounger.log import log
-from lounger.utils.config_utils import ConfigUtils
+from lounger.settings import settings
 
 
 class ExtractVar:
@@ -12,6 +13,7 @@ class ExtractVar:
     """
     _instance = None
     _functions = {}
+    _template_registry_name = "LOUNGER_TEMPLATE_FUNCTIONS"
 
     def __new__(cls):
         if cls._instance is None:
@@ -33,13 +35,31 @@ class ExtractVar:
             conftest = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(conftest)
 
-            for name in dir(conftest):
-                obj = getattr(conftest, name)
-                if callable(obj) and not name.startswith("pytest_"):
-                    self._functions[name] = obj
-                    log.debug(f"🔧 Loaded custom function: {name}")
+            registry = getattr(conftest, self._template_registry_name, None)
+            if isinstance(registry, dict):
+                for name, obj in registry.items():
+                    if callable(obj):
+                        self._functions[name] = obj
+                        log.debug(f"🔧 Loaded registered template function: {name}")
+                return
+
+            for name, obj in inspect.getmembers(conftest, inspect.isfunction):
+                if name.startswith("pytest_"):
+                    continue
+                if obj.__module__ != conftest.__name__:
+                    continue
+                self._functions[name] = obj
+                log.debug(f"🔧 Loaded custom function: {name}")
         except Exception as e:
             log.error(f"Failed to load conftest.py: {e}")
+
+    @classmethod
+    def reset(cls) -> None:
+        """
+        Reset loaded custom functions.
+        """
+        cls._instance = None
+        cls._functions = {}
 
     @staticmethod
     def config(key: str) -> Any:
@@ -47,13 +67,7 @@ class ExtractVar:
         Extract from the config file
         :param key:
         """
-        config_utils = ConfigUtils("config/config.yaml")
-        base_config = config_utils.get_config('global_test_config')
-        try:
-            return base_config.get(key)
-        except Exception as e:
-            log.error(f"getting config error: {e}")
-            return None
+        return settings.get(key, node="global_test_config")
 
     @staticmethod
     def extract(key: str) -> Any:

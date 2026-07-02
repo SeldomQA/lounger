@@ -3,8 +3,7 @@ from pathlib import Path
 from typing import List, Tuple, Any
 
 from lounger.log import log
-from lounger.utils.config_utils import ConfigUtils
-from lounger.utils.variables import ExtractVar
+from lounger.settings import settings
 
 
 def global_test_config(key: str) -> Any:
@@ -12,17 +11,11 @@ def global_test_config(key: str) -> Any:
     get global test config
     param: key
     """
-    var = ExtractVar()
-    value = var.config(key)
-    return value
+    return settings.get(key, node="global_test_config")
 
 
 def base_url():
-    config_file = ConfigUtils("config/config.yaml")
-    if config_file.is_exists():
-        return config_file.get_config("base_url")
-    else:
-        return None
+    return settings.get("base_url")
 
 
 base_url = base_url()
@@ -33,8 +26,7 @@ class LoadConfig:
     _config_file_path = Path("config/config.yaml")
 
     def __init__(self):
-        config_file = ConfigUtils(str(self._config_file_path))
-        self.test_project = config_file.get_config("test_project")
+        self.test_project = settings.get("test_project", default={}) or {}
 
     @classmethod
     def get_project_root(cls) -> str:
