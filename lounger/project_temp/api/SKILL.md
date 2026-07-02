@@ -104,14 +104,14 @@ class EmailAPI(HttpRequest):
 
 **Key rules**:
 - Use fixtures in `conftest.py` to manage client and service initialization.
-- Standardize assertions with `pytest_req.assertions.expect`.
+- Standardize assertions with `lounger.request.expect`.
 - Put complex data into JSON files and keep simple parameters inline.
 
 **Example**:
 
 ```python
 import pytest
-from pytest_req.assertions import expect
+from lounger.request import expect
 from lounger.utils.resource_loader import resource_file
 
 

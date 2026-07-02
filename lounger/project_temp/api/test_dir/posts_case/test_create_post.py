@@ -1,5 +1,5 @@
 import pytest
-from pytest_req.assertions import expect
+from lounger.request import expect
 
 from lounger.utils.resource_loader import resource_file
 

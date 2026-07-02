@@ -1,4 +1,4 @@
-from pytest_req.assertions import expect
+from lounger.request import expect
 
 
 def test_get_post(posts_api):
