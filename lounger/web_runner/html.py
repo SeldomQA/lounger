@@ -17,8 +17,13 @@ _FALLBACK_HTML = r"""<!DOCTYPE html>
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   background: var(--bg); color: var(--text); height: 100vh; display: flex; }
 /* ── sidebar ── */
-.sidebar { width: 420px; min-width: 320px; background: var(--surface);
+.sidebar-shell { width: 420px; min-width: 280px; max-width: 70vw; display: flex; flex-shrink: 0; }
+.sidebar { width: calc(100% - 6px); min-width: 0; background: var(--surface);
   border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+.sidebar-resizer { width: 6px; cursor: col-resize; background: transparent; position: relative; flex-shrink: 0; }
+.sidebar-resizer::after { content: ""; position: absolute; top: 0; bottom: 0; left: 2px; width: 2px;
+  background: var(--border); transition: background .15s; }
+.sidebar-resizer:hover::after, .sidebar-resizer.dragging::after { background: var(--accent); }
 .sidebar-header { padding: 16px; border-bottom: 1px solid var(--border);
   display: flex; align-items: center; gap: 10px; }
 .sidebar-header h1 { font-size: 18px; font-weight: 600; }
@@ -85,27 +90,30 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 </head>
 <body>
 
-<div class="sidebar">
-  <div class="sidebar-header">
-    <span class="logo">🧪</span>
-    <h1>lounger Test Runner</h1>
+<div class="sidebar-shell" id="sidebarShell">
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <span class="logo">🧪</span>
+      <h1>lounger Test Runner</h1>
+    </div>
+    <div style="padding:8px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+      <span id="caseStats" style="font-size:12px;color:var(--muted)">📊 加载中...</span>
+      <button class="btn btn-outline" onclick="refreshCases()" style="font-size:12px">🔄 刷新用例列表</button>
+    </div>
+    <div class="toolbar">
+      <input type="text" id="search" placeholder="搜索用例名称..." oninput="filterCases()">
+      <button class="btn btn-outline" onclick="selectAll()">全选</button>
+      <button class="btn btn-outline" onclick="deselectAll()">取消</button>
+    </div>
+    <div class="toolbar">
+      <button class="btn btn-green" onclick="runSelected()" style="flex:1">▶ 执行选中</button>
+      <button class="btn btn-accent" onclick="runAll()" style="flex:1">▶▶ 执行全部</button>
+    </div>
+    <div class="case-list" id="caseList">
+      <div class="empty-state">⏳ 正在收集用例...</div>
+    </div>
   </div>
-  <div style="padding:8px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
-    <span id="caseStats" style="font-size:12px;color:var(--muted)">📊 加载中...</span>
-    <button class="btn btn-outline" onclick="refreshCases()" style="font-size:12px">🔄 刷新用例列表</button>
-  </div>
-  <div class="toolbar">
-    <input type="text" id="search" placeholder="搜索用例名称..." oninput="filterCases()">
-    <button class="btn btn-outline" onclick="selectAll()">全选</button>
-    <button class="btn btn-outline" onclick="deselectAll()">取消</button>
-  </div>
-  <div class="toolbar">
-    <button class="btn btn-green" onclick="runSelected()" style="flex:1">▶ 执行选中</button>
-    <button class="btn btn-accent" onclick="runAll()" style="flex:1">▶▶ 执行全部</button>
-  </div>
-  <div class="case-list" id="caseList">
-    <div class="empty-state">⏳ 正在收集用例...</div>
-  </div>
+  <div class="sidebar-resizer" id="sidebarResizer" onmousedown="startSidebarResize(event)"></div>
 </div>
 
 <div class="main">
@@ -140,6 +148,72 @@ let eventSource = null;
 let currentVerbosity = 'verbose';
 function setVerbosity(v) { currentVerbosity = v; }
 let lastRunIds = new Set();
+const EXPANDED_NODES_KEY = 'lounger.webRunner.expandedNodes';
+const SIDEBAR_WIDTH_KEY = 'lounger.webRunner.sidebarWidth';
+let expandedNodes = loadExpandedNodes();
+
+function loadExpandedNodes() {
+  try {
+    const raw = localStorage.getItem(EXPANDED_NODES_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    return new Set(Array.isArray(parsed) ? parsed : []);
+  } catch(_) {
+    return new Set();
+  }
+}
+
+function saveExpandedNodes() {
+  try {
+    localStorage.setItem(EXPANDED_NODES_KEY, JSON.stringify([...expandedNodes]));
+  } catch(_) {}
+}
+
+function loadSidebarWidth() {
+  try {
+    return localStorage.getItem(SIDEBAR_WIDTH_KEY);
+  } catch(_) {
+    return null;
+  }
+}
+
+function saveSidebarWidth(width) {
+  try {
+    localStorage.setItem(SIDEBAR_WIDTH_KEY, String(width));
+  } catch(_) {}
+}
+
+function applySidebarWidth(width) {
+  const shell = document.getElementById('sidebarShell');
+  if (!shell || !width) return;
+  shell.style.width = width + 'px';
+}
+
+function startSidebarResize(event) {
+  event.preventDefault();
+  const shell = document.getElementById('sidebarShell');
+  const resizer = document.getElementById('sidebarResizer');
+  if (!shell || !resizer) return;
+
+  resizer.classList.add('dragging');
+
+  function onMove(ev) {
+    const minWidth = 280;
+    const maxWidth = Math.min(window.innerWidth * 0.7, 900);
+    const nextWidth = Math.max(minWidth, Math.min(maxWidth, ev.clientX));
+    shell.style.width = nextWidth + 'px';
+    saveSidebarWidth(nextWidth);
+  }
+
+  function onUp() {
+    resizer.classList.remove('dragging');
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+  }
+
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
 
 // ── fetch cases ──
 async function loadCases() {
@@ -191,18 +265,20 @@ function renderTree() {
 
 function renderNode(node, depth) {
   const indent = depth * 18;
+  const key = nodeKey(node);
+  const isOpen = expandedNodes.has(key);
   let html = '';
 
   if (node.type === 'dir') {
     const hasKids = node.children && node.children.length > 0;
-    html += '<div class="tree-node tree-dir open" onclick="toggleTreeNode(this)" style="padding-left:' + indent + 'px">';
+    html += '<div class="tree-node tree-dir' + (isOpen ? ' open' : '') + '" data-node-key="' + esc(key) + '" onclick="toggleTreeNode(this)" style="padding-left:' + indent + 'px">';
     html += '<span class="tree-toggle' + (hasKids ? '' : ' leaf') + '">▶</span>';
     html += '<span class="tree-icon">📁</span>';
     html += '<span class="tree-label" title="' + esc(node.relpath || node.name) + '">' + esc(node.name);
     html += ' <span class="count">(' + node.total_cases + ')</span></span>';
     html += '</div>';
     if (hasKids) {
-      html += '<div class="tree-children show">';
+      html += '<div class="tree-children' + (isOpen ? ' show' : '') + '">';
       for (const child of node.children) {
         html += renderNode(child, depth + 1);
       }
@@ -210,7 +286,7 @@ function renderNode(node, depth) {
     }
   } else if (node.type === 'file') {
     const hasCases = node.cases && node.cases.length > 0;
-    html += '<div class="tree-node tree-file open" onclick="toggleTreeNode(this)" style="padding-left:' + indent + 'px">';
+    html += '<div class="tree-node tree-file' + (isOpen ? ' open' : '') + '" data-node-key="' + esc(key) + '" onclick="toggleTreeNode(this)" style="padding-left:' + indent + 'px">';
     html += '<span class="tree-toggle' + (hasCases ? '' : ' leaf') + '">▶</span>';
     html += '<span class="tree-icon">📄</span>';
     html += '<span class="tree-label" title="' + esc(node.relpath || node.name) + '">' + esc(node.name);
@@ -222,7 +298,7 @@ function renderNode(node, depth) {
     }
     html += '</div>';
     if (hasCases) {
-      html += '<div class="tree-children show">';
+      html += '<div class="tree-children' + (isOpen ? ' show' : '') + '">';
       for (const c of node.cases) {
         html += renderCaseNode(c, depth + 1);
       }
@@ -253,11 +329,21 @@ function renderCaseNode(c, depth) {
   return html;
 }
 
+function nodeKey(node) {
+  return node.type + ':' + (node.relpath || node.name || '');
+}
+
 function toggleTreeNode(el) {
-  el.classList.toggle('open');
+  const key = el.dataset.nodeKey;
+  const isOpen = el.classList.toggle('open');
+  if (key) {
+    if (isOpen) expandedNodes.add(key);
+    else expandedNodes.delete(key);
+    saveExpandedNodes();
+  }
   const children = el.nextElementSibling;
   if (children && children.classList.contains('tree-children')) {
-    children.classList.toggle('show');
+    children.classList.toggle('show', isOpen);
   }
 }
 
@@ -321,10 +407,11 @@ function filterCases() {
       group.classList.remove('show');
     } else {
       group.style.display = '';
-      group.classList.add('show');
       const header = group.previousElementSibling;
       if (header && header.classList.contains('tree-node')) {
-        header.classList.add('open');
+        const isOpen = expandedNodes.has(header.dataset.nodeKey || '');
+        header.classList.toggle('open', isOpen);
+        group.classList.toggle('show', isOpen);
         header.style.display = '';
       }
     }
@@ -472,6 +559,7 @@ async function refreshCases() {
 
 function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
+applySidebarWidth(loadSidebarWidth());
 loadCases();
 </script>
 </body>
