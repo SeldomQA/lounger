@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from typing import Any
 
-from lounger.db_operation import MySQLResource, build_mysql_resource
+from lounger.db_operation.resource import MySQLResource, build_mysql_resource
 
 
 def create_mysql_resource(get_value: Callable[[str], Any]) -> MySQLResource:

@@ -180,6 +180,7 @@ project_root/
 - Use `dict` payloads for flexible positive and negative testing.
 - Keep test data separate from code when the payload becomes complex.
 - Reuse shared fixtures from a central `conftest.py`.
+- Register post-run notifications through support modules instead of writing summary logic directly in `conftest.py`.
 - Keep docstrings short and meaningful.
 
 ---
