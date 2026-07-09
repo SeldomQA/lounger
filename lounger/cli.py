@@ -98,6 +98,7 @@ def create_scaffold(project_name: str, type: str) -> None:
             (template_base / "__init__.py", "test_dir/posts_case/__init__.py"),
             (template_base / "api" / "config" / "config.yaml", "config/config.yaml"),
             (template_base / "api" / "support" / "db.py", "support/db.py"),
+            (template_base / "api" / "support" / "notify.py", "support/notify.py"),
             (template_base / "api" / "datas" / "sample" / "test_sample.yaml", "datas/sample/test_sample.yaml"),
             (template_base / "api" / "api" / "clients" / "posts_api.py", "api/clients/posts_api.py"),
             (template_base / "api" / "test_dir" / "conftest.py", "test_dir/conftest.py"),
