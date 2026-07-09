@@ -9,6 +9,7 @@ from pytest_req.log import log_cfg
 
 from lounger import __version__
 from lounger.log import log
+from lounger.plugin_hooks import build_test_run_summary, run_after_run_finish, run_after_session_finish
 from lounger.pytest_extend.screenshot import screenshot_base64
 
 LOG_STREAM = StringIO()
@@ -206,3 +207,19 @@ def pytest_collection_modifyitems(config, items):
 
     # Core: Update the pending execution queue of pytest in place
     items[:] = selected_items
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """
+    Trigger lounger post-run hooks after pytest session finishes.
+    """
+    terminalreporter = session.config.pluginmanager.get_plugin("terminalreporter")
+    summary = build_test_run_summary(terminalreporter, exitstatus)
+
+    report_path = None
+    option = getattr(session.config, "option", None)
+    if option is not None:
+        report_path = getattr(option, "htmlpath", None)
+
+    run_after_session_finish(summary)
+    run_after_run_finish(report_path, summary)
