@@ -4,6 +4,7 @@ lounger request
 import json
 import os
 import time
+from collections.abc import Mapping
 from functools import wraps
 
 import requests
@@ -108,24 +109,29 @@ def api(describe: str = "", status_code: int = None, ret: str = None, check: dic
     return decorator
 
 
-def save_response(response: requests.Response, filename: str = None):
+def save_response(response: requests.Response | Mapping | list, filename: str = None):
     """
-    save response.
+    Save response content to a local file.
     :param response:
     :param filename:
     :return:
     """
-    # Determine content type
-    content_type = response.headers.get('Content-Type', '').lower()
+    data = response
+    ext = ".json"
 
-    data = response.text
-    ext = '.txt'
-    if 'application/json' in content_type or response.text.strip().startswith('{'):
-        try:
-            data = response.json()
-            ext = '.json'
-        except requests.exceptions.JSONDecodeError:
-            pass
+    if isinstance(response, requests.Response):
+        content_type = response.headers.get("Content-Type", "").lower()
+        data = response.text
+        ext = ".txt"
+
+        if "application/json" in content_type or response.text.strip().startswith(("{", "[")):
+            try:
+                data = response.json()
+                ext = ".json"
+            except (requests.exceptions.JSONDecodeError, ValueError):
+                pass
+    elif not isinstance(response, (Mapping, list)):
+        raise TypeError("save_response() only supports requests.Response or JSON-compatible dict/list data")
 
     if filename is None:
         timestamp = int(time.time() * 1000)
@@ -134,9 +140,8 @@ def save_response(response: requests.Response, filename: str = None):
         root, _ = os.path.splitext(filename)
         filename = f"{root}{ext}"
 
-    # Save file
-    with open(filename, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=4) if ext == '.json' else f.write(data)
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=4) if ext == ".json" else f.write(data)
 
     log.info(f"Saved response to {filename}")
     return filename
