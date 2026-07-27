@@ -1,3 +1,4 @@
+import inspect as _inspect
 import json
 from functools import lru_cache
 from pathlib import Path
@@ -28,8 +29,7 @@ def resource_file(
 
     # Determine base directory
     if base_dir is None:
-        import inspect
-        caller_frame = inspect.currentframe().f_back
+        caller_frame = _inspect.currentframe().f_back
         if caller_frame is None:
             raise RuntimeError("Unable to determine caller directory.")
         base_dir = Path(caller_frame.f_code.co_filename).parent.resolve()
@@ -84,3 +84,35 @@ def _get_nested_value(data: Dict[str, Any], key_path: str) -> Any:
             raise KeyError(f"Key '{k}' not found in nested data. Full path: {key_path}")
         value = value[k]
     return value
+
+
+def resolve_resource_path(
+        file: str,
+        base_dir: Path | None = None,
+) -> str:
+    """
+    Resolve a resource file path without loading its content.
+
+    Works with any file extension (CSV, XLS, etc.). Uses the same search
+    logic as :func:`resource_file` but returns an absolute path string
+    instead of the parsed content.
+
+    :param file: Filename (e.g., 'data.csv', 'template.xlsx')
+    :param base_dir: Base directory to search from. If None, uses caller's directory.
+    :return: Absolute path to the resolved file.
+    :raises FileNotFoundError: If the file cannot be located.
+    """
+    if not file:
+        raise ValueError("File name must not be empty.")
+
+    if base_dir is None:
+        caller_frame = _inspect.currentframe().f_back
+        if caller_frame is None:
+            raise RuntimeError("Unable to determine caller directory.")
+        base_dir = Path(caller_frame.f_code.co_filename).parent.resolve()
+
+    file_path = Path(find_file(file, base_dir))
+    if not file_path or not file_path.exists():
+        raise FileNotFoundError(f"Resource file not found: {file}")
+
+    return str(file_path.resolve())
