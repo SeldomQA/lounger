@@ -89,7 +89,10 @@ def _get_actual_value(resp: requests.Response, expr: str):
             json_data = resp.json()
             return jmespath.jmespath(json_data, jmes_expr)
         else:
-            return expr
+            # Any other expression is treated as a JMESPath expression applied
+            # directly to the JSON response body (equivalent to the "body." prefix).
+            json_data = resp.json()
+            return jmespath.jmespath(json_data, expr)
     else:
         return expr
 
