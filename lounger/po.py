@@ -317,7 +317,7 @@ class Locator:
         :return:
         """
         Lounger.action = "element_handle()"
-        return self.find.element_handle(timeit=self.timeout)
+        return self.find.element_handle(timeout=self.timeout)
 
     def element_handles(self) -> List[ElementHandle]:
         """
@@ -604,14 +604,6 @@ class Locator:
         """
         Lounger.action = "inner_text()"
         return self.find.inner_text(timeout=self.timeout)
-
-    async def input_value(self) -> str:
-        """
-        Returns input.value for the selected <input> or <textarea> or <select> element.
-        :return:
-        """
-        Lounger.action = "input_value()"
-        return self.find.input_value(timeout=self.timeout)
 
     def is_checked(self) -> bool:
         """
