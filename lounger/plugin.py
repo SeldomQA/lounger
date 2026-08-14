@@ -1,5 +1,7 @@
+import inspect
 import json
 import os
+import types
 from datetime import datetime, timezone
 from io import StringIO
 from typing import Any
@@ -159,11 +161,14 @@ def pytest_collection_modifyitems(config, items):
 
             # Create a new function object with updated docstring
             func = item._obj
+            # Only rewrite plain functions and bound methods; skip other
+            # callables (e.g. functools.partial) to avoid collection crashes
+            is_bound_method = inspect.ismethod(func)
+            if not (inspect.isfunction(func) or is_bound_method):
+                continue
+
             # Unwrap bound method to get the underlying function
-            if hasattr(func, "__func__"):
-                raw_func = func.__func__
-            else:
-                raw_func = func
+            raw_func = func.__func__ if is_bound_method else func
             new_func = type(raw_func)(
                 raw_func.__code__,
                 raw_func.__globals__,
@@ -176,8 +181,13 @@ def pytest_collection_modifyitems(config, items):
             # Safely append case name to docstring (handle None cases)
             new_func.__doc__ = (raw_func.__doc__ or "") + " | " + case_name
 
-            # Replace the test item's function object
-            item._obj = new_func
+            # Replace the test item's function object.
+            # If the original was a bound method (class-based test), re-bind
+            # the new function to the same instance so `self` keeps working.
+            if is_bound_method:
+                item._obj = types.MethodType(new_func, func.__self__)
+            else:
+                item._obj = new_func
 
     json_path = config.getoption("--run-json")
     if not json_path:
