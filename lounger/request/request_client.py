@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Dict, Any
+from typing import Any, Dict, List, Tuple
 
 import requests
 from pytest_req.plugin import Session
@@ -22,20 +22,26 @@ class RequestClient:
         self._session = Session(base_url)
 
     @staticmethod
-    def _files_load(files_dict: Dict[str, str]) -> Dict[str, Any]:
+    def _files_load(files_dict: Dict[str, str]) -> Tuple[Dict[str, Any], List[Any]]:
         """
         Process file upload parameters
 
         :param files_dict: File upload parameters dictionary
-        :return: Processed file upload parameters
+        :return: Tuple of (processed file upload parameters, opened file handles)
         :raises Exception: If file processing fails
         """
         files = {}
+        handles = []
         try:
             for file_name, file_path in files_dict.items():
-                files[file_name] = open(file_path, "rb")
-            return files
+                handle = open(file_path, "rb")
+                handles.append(handle)
+                files[file_name] = handle
+            return files, handles
         except Exception as e:
+            # Close any handles opened so far to avoid leaking file descriptors
+            for handle in handles:
+                handle.close()
             log.error(f"File upload parameters processing failed: {e}")
             raise e
 
@@ -96,8 +102,9 @@ class RequestClient:
                 kwargs['headers'] = cache.get("default_headers") or {}
 
             # Process files if present
+            opened_files = []
             if "files" in kwargs:
-                kwargs["files"] = self._files_load(kwargs["files"])
+                kwargs["files"], opened_files = self._files_load(kwargs["files"])
 
             # Add content type for JSON requests
             if "json" in kwargs:
@@ -142,9 +149,17 @@ class RequestClient:
             }
 
             if method not in method_handlers:
+                # Close any opened upload handles before raising
+                for handle in opened_files:
+                    handle.close()
                 raise NotImplementedError(f"Only supported methods: {', '.join(method_handlers.keys())}")
 
-            resp = method_handlers[method](url, **kwargs)
+            try:
+                resp = method_handlers[method](url, **kwargs)
+            finally:
+                # Close the file handles opened for the upload so they are not leaked
+                for handle in opened_files:
+                    handle.close()
 
             # Content type handling (commented out but kept for reference)
             # content_type = resp.headers.get("Content-Type", "")
