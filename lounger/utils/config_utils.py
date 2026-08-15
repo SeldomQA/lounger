@@ -1,4 +1,5 @@
 import os
+import warnings
 from typing import Any, Dict, Optional
 
 import yaml
@@ -10,14 +11,26 @@ class ConfigUtils:
     """
     Configuration utility class for loading and accessing YAML configuration files.
     This is a general-purpose class that requires configuration file path and config node to be passed explicitly.
+
+    .. deprecated::
+        Use :mod:`lounger.settings` (``Settings`` / ``YamlSettingsSource`` /
+        the ``settings`` singleton) instead.  ``ConfigUtils`` will be removed
+        in a future major release.
     """
 
     def __init__(self, config_file_path: str):
         """
         Initialize the ConfigUtils with the path to the YAML configuration file.
-        
+
         :param config_file_path: Path to the YAML configuration file
         """
+        warnings.warn(
+            "ConfigUtils is deprecated; use lounger.settings "
+            "(Settings / YamlSettingsSource / settings.get) instead. "
+            "It will be removed in a future major release.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.config_file_path = config_file_path
 
     def is_exists(self) -> bool:

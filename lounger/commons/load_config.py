@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any, List, Tuple
 
 from lounger.log import log
-from lounger.settings import settings
+from lounger.settings import find_config_file, settings
 
 
 def global_test_config(key: str) -> Any:
@@ -14,30 +14,91 @@ def global_test_config(key: str) -> Any:
     return settings.get(key, node="global_test_config")
 
 
-def base_url():
+def base_url() -> str:
+    """
+    Read the base URL lazily from the current settings.
+
+    Unlike a module-level constant, this reflects config changes without a
+    process restart (the YAML source is mtime-cached and re-read on change).
+    """
     return settings.get("base_url")
 
 
-base_url = base_url()
+class _LazyBaseUrl:
+    """
+    Lazy, non-breaking ``base_url`` compatibility object.
+
+    ``lounger.commons.load_config.base_url`` was historically a module-level
+    value (and before that, a ``base_url()`` function) and is used widely
+    across projects.  This object keeps every usage working while reading the
+    value lazily from settings on each access:
+
+    - value usage:   ``base_url == "https://..."``, ``f"{base_url}/path"``
+    - call usage:    ``base_url()`` (legacy function form)
+    - str methods:   ``base_url.startswith("http")`` etc.
+    """
+
+    def __call__(self) -> Any:
+        return settings.get("base_url")
+
+    def _value(self) -> Any:
+        return settings.get("base_url")
+
+    def __str__(self) -> str:
+        return str(self._value())
+
+    def __repr__(self) -> str:
+        return repr(self._value())
+
+    def __format__(self, format_spec: str) -> str:
+        return format(self._value(), format_spec)
+
+    def __eq__(self, other: Any) -> bool:
+        return self._value() == other
+
+    def __ne__(self, other: Any) -> bool:
+        return self._value() != other
+
+    def __hash__(self) -> int:
+        return hash(self._value())
+
+    def __bool__(self) -> bool:
+        return bool(self._value())
+
+    def __add__(self, other: Any) -> str:
+        return self._value() + other
+
+    def __radd__(self, other: Any) -> str:
+        return other + self._value()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._value(), name)
+
+
+#: Compat layer: historically a module-level constant, then a ``base_url()``
+#: function.  Now a lazy proxy — reads settings on every access, so config
+#: edits take effect without a process restart.
+base_url = _LazyBaseUrl()
 
 
 class LoadConfig:
-    # The config file is always at <project_root>/config/config.yaml.
-    _config_file_path = Path("config/config.yaml")
-
     def __init__(self):
         self.test_project = settings.get("test_project", default={}) or {}
 
     @classmethod
     def get_project_root(cls) -> str:
         """
-        Return the project root directory, derived from config/config.yaml.
+        Return the project root directory, anchored to config/config.yaml.
 
         The config file is the framework's fixed anchor — always located at
-        <project_root>/config/config.yaml.  This method is independent of
-        case-file layout depth and works for any project structure.
+        <project_root>/config/config.yaml.  It is found by walking up from the
+        current working directory, so the result is independent of the
+        directory pytest is launched from.
         """
-        return str(cls._config_file_path.resolve().parent.parent)
+        config_file = find_config_file()
+        if config_file is None:
+            return str(Path.cwd())
+        return str(config_file.parent.parent)
 
     def get_project_config(self) -> Tuple[List[str], List[str]]:
         """

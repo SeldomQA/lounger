@@ -5,8 +5,8 @@ from typing import Any, Dict, List, Tuple
 import requests
 from pytest_req.plugin import Session
 
-from lounger.commons.load_config import base_url
 from lounger.log import log
+from lounger.settings import settings
 from lounger.utils import cache
 
 
@@ -17,9 +17,25 @@ class RequestClient:
 
     def __init__(self):
         """
-        Initialize the HTTP client with base URL
+        Initialize the HTTP client.
+
+        The session is created lazily on first use so importing this module
+        does not evaluate settings (config changes are picked up without a
+        process restart).
         """
-        self._session = Session(base_url)
+        self._session: Session | None = None
+
+    def _get_session(self) -> Session:
+        """
+        Return a session bound to the *current* base_url.
+
+        The session is recreated when the configured base_url changes, so
+        editing config/config.yaml takes effect on the next request.
+        """
+        base_url = settings.get("base_url")
+        if self._session is None or self._session.base_url != base_url:
+            self._session = Session(base_url)
+        return self._session
 
     @staticmethod
     def _files_load(files_dict: Dict[str, str]) -> Tuple[Dict[str, Any], List[Any]]:
@@ -139,13 +155,14 @@ class RequestClient:
             method = kwargs.pop("method", "GET").upper()
             url = kwargs.pop("url", "")
 
-            # Send request based on method
+            # Send request based on method (session follows the latest base_url)
+            session = self._get_session()
             method_handlers = {
-                "GET": self._session.get,
-                "POST": self._session.post,
-                "PUT": self._session.put,
-                "DELETE": self._session.delete,
-                "PATCH": self._session.patch
+                "GET": session.get,
+                "POST": session.post,
+                "PUT": session.put,
+                "DELETE": session.delete,
+                "PATCH": session.patch
             }
 
             if method not in method_handlers:
