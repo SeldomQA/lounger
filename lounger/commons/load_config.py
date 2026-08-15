@@ -14,16 +14,6 @@ def global_test_config(key: str) -> Any:
     return settings.get(key, node="global_test_config")
 
 
-def base_url() -> str:
-    """
-    Read the base URL lazily from the current settings.
-
-    Unlike a module-level constant, this reflects config changes without a
-    process restart (the YAML source is mtime-cached and re-read on change).
-    """
-    return settings.get("base_url")
-
-
 class _LazyBaseUrl:
     """
     Lazy, non-breaking ``base_url`` compatibility object.
@@ -34,7 +24,7 @@ class _LazyBaseUrl:
     value lazily from settings on each access:
 
     - value usage:   ``base_url == "https://..."``, ``f"{base_url}/path"``
-    - call usage:    ``base_url()`` (legacy function form)
+    - call usage:    ``base_url()`` (legacy function form, via ``__call__``)
     - str methods:   ``base_url.startswith("http")`` etc.
     """
 
@@ -75,9 +65,9 @@ class _LazyBaseUrl:
         return getattr(self._value(), name)
 
 
-#: Compat layer: historically a module-level constant, then a ``base_url()``
-#: function.  Now a lazy proxy — reads settings on every access, so config
-#: edits take effect without a process restart.
+#: Lazy proxy — reads settings on every access, so config edits take effect
+#: without a process restart.  Keeps both the value usage (``f"{base_url}"``,
+#: ``base_url == ...``) and the legacy call form ``base_url()`` working.
 base_url = _LazyBaseUrl()
 
 
