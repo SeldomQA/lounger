@@ -3,12 +3,22 @@ MS SQL Server DB API
 """
 from typing import Any
 
-try:
-    import pymssql
-except ModuleNotFoundError as e:
-    raise ModuleNotFoundError("Please install the library. https://github.com/pymssql/pymssql")
-
 from lounger.db_operation.base_db import SQLBase
+
+
+def _get_pymssql():
+    """
+    Import pymssql lazily so this module can be imported without the driver.
+    The error only surfaces when a connection is actually created.
+    """
+    try:
+        import pymssql
+    except ModuleNotFoundError as e:
+        raise ModuleNotFoundError(
+            "pymssql is required for MSSQL support. "
+            "Install with: pip install lounger[db-mssql]"
+        ) from e
+    return pymssql
 
 
 class MSSQLDB(SQLBase):
@@ -22,6 +32,7 @@ class MSSQLDB(SQLBase):
         :param password:
         :param database:
         """
+        pymssql = _get_pymssql()
         self.connection = pymssql.connect(server=server,
                                           user=user,
                                           password=password,

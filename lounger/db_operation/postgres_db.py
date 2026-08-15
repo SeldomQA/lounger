@@ -1,11 +1,22 @@
 from typing import Any
 
-try:
-    import psycopg2
-    import psycopg2.extras
-except ModuleNotFoundError as e:
-    raise ModuleNotFoundError("Please install the library. https://github.com/psycopg/psycopg2")
 from lounger.db_operation.base_db import SQLBase
+
+
+def _get_psycopg2():
+    """
+    Import psycopg2 lazily so this module can be imported without the driver.
+    The error only surfaces when a connection is actually created.
+    """
+    try:
+        import psycopg2
+        import psycopg2.extras
+    except ModuleNotFoundError as e:
+        raise ModuleNotFoundError(
+            "psycopg2 is required for PostgreSQL support. "
+            "Install with: pip install lounger[db-postgres]"
+        ) from e
+    return psycopg2
 
 
 class PostgresDB(SQLBase):
@@ -19,6 +30,7 @@ class PostgresDB(SQLBase):
         :param  user:
         :param password:
         """
+        psycopg2 = _get_psycopg2()
         self.connection = psycopg2.connect(host=host, port=port, database=database, user=user, password=password)
         self.connection.autocommit = True
 
@@ -44,7 +56,7 @@ class PostgresDB(SQLBase):
         """
         self.log_execute_sql(sql)
         data_list = []
-        with self.connection.cursor(cursor_factory=psycopg2.extras.DictCursor) as cursor:
+        with self.connection.cursor(cursor_factory=_get_psycopg2().extras.DictCursor) as cursor:
             cursor.execute(sql)
             rows = cursor.fetchall()
             for row in rows:
@@ -57,7 +69,7 @@ class PostgresDB(SQLBase):
         Query one row
         """
         self.log_execute_sql(sql)
-        with self.connection.cursor(cursor_factory=psycopg2.extras.DictCursor) as cursor:
+        with self.connection.cursor(cursor_factory=_get_psycopg2().extras.DictCursor) as cursor:
             cursor.execute(sql)
             row = cursor.fetchone()
             self.log_query_result(row)

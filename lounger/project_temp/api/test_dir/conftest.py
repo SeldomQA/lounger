@@ -29,3 +29,12 @@ def posts_api(env_config: dict) -> PostsAPI:
 # def mysql_db():
 #     with create_mysql_resource(_extractor.config) as db:
 #         yield db
+#
+# Recommended one-liner (managed resource, no manual connect/close):
+#
+# from lounger.db_operation import create_mysql_fixture
+#
+# mysql_db = create_mysql_fixture(
+#     scope="class",
+#     host="localhost", port=3306, user="root", password="xxx", database="guest3",
+# )

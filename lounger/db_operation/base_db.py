@@ -78,3 +78,15 @@ class SQLBase:
         update sql statement
         """
         return self.update_data(table, data, where)
+
+    def __enter__(self):
+        """
+        Context manager entry: return the connection itself.
+        """
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """
+        Context manager exit: always close the connection.
+        """
+        self.close()

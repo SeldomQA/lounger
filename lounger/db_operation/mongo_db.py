@@ -1,10 +1,21 @@
 """
 Mongo DB API
 """
-try:
-    from pymongo import MongoClient
-except ModuleNotFoundError as e:
-    raise ModuleNotFoundError("Please install the library. https://github.com/mongodb/mongo-python-driver")
+
+
+def _get_mongo_client():
+    """
+    Import pymongo lazily so this module can be imported without the driver.
+    The error only surfaces when a connection is actually created.
+    """
+    try:
+        from pymongo import MongoClient
+    except ModuleNotFoundError as e:
+        raise ModuleNotFoundError(
+            "pymongo is required for MongoDB support. "
+            "Install with: pip install lounger[db-mongo]"
+        ) from e
+    return MongoClient
 
 
 class MongoDB:
@@ -14,6 +25,7 @@ class MongoDB:
         """
         Connect the mongodb database
         """
+        MongoClient = _get_mongo_client()
         client = MongoClient(host, port)
         db_obj = client[db]
         return db_obj
