@@ -1,6 +1,7 @@
 import pathlib
 import sys
 from typing import (
+    TYPE_CHECKING,
     Any,
     Dict,
     List,
@@ -29,6 +30,9 @@ if sys.version_info >= (3, 8):  # pragma: no cover
     from typing import Literal
 else:  # pragma: no cover
     from typing_extensions import Literal
+
+if TYPE_CHECKING:  # pragma: no cover
+    from playwright.sync_api import FrameLocator, JSHandle, Page
 
 
 class BasePage(object):

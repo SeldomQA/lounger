@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 import sys
-from typing import Any, List, Union, Dict, Callable
+from typing import Any, Callable, Dict, List, Union
 
 __all__ = ['jsonpath']
 

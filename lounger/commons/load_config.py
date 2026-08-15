@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import List, Tuple, Any
+from typing import Any, List, Tuple
 
 from lounger.log import log
 from lounger.settings import settings

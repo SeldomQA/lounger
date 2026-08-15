@@ -13,20 +13,33 @@ authors = [
 
 requires-python = ">=3.10, <4.0"
 
+# 核心依赖：pytest 插件 + yaml + click（3.11 收敛后主依赖只保留核心）
+# DB / AI / Playwright 全部下沉到 [project.optional-dependencies] extras
 dependencies = [
-    "pytest-playwright>=0.7.0,<0.8.0",
     "pytest-req>=0.5.0",
+    "pytest-xhtml>=0.5.0",
+    "pytest-rerunfailures>=14.0,<15.0",
     "PyYAML>=6.0.2,<7.0.0",
     "openpyxl>=3.1.5,<3.2.0",
-    "PyMySQL>=1.1.1,<2.0.0",
-    "pytest-rerunfailures>=14.0,<15.0",
-    "pytest-xhtml>=0.5.0",
     "click>=8.1.7,<9.0.0",
-    "python-dateutil==2.8.2",
-    "centrifuge-python (>=0.4.1,<0.5.0)",
-    "autowing (>=0.7.0,<0.8.0)",
-    "fabric>=3.2.2,<4.0.0",
+    "python-dateutil>=2.8.2,<3.0.0",
+    "requests>=2.28.0",
+    "centrifuge-python>=0.4.1,<0.5.0",
 ]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ruff",
+    "black",
+    "playwright",
+    "pytest-playwright>=0.7.0,<0.8.0",
+]
+db-mysql = ["PyMySQL>=1.1.1,<2.0.0"]
+db-mssql = ["pymssql>=2.2"]
+db-postgres = ["psycopg2-binary>=2.9"]
+db-ssh = ["fabric>=3.2.2,<4.0.0"]
+ai = ["autowing>=0.7.0,<0.8.0"]
 
 [project.urls]
 repository = "https://github.com/SeldomQA/lounger"
@@ -37,3 +50,17 @@ lounger = "lounger.cli:main"
 
 [project.entry-points."pytest11"]
 lounger = "lounger.plugin"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+# 核心规则集：pycodestyle 关键错误 + pyflakes + import 排序
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.pytest.ini_options]
+# pytest tests/ = 单元级（默认）；pytest -m integration = 外部依赖级（3.1 约定）
+markers = [
+    "integration: tests requiring external dependencies (browser, database, network)",
+]

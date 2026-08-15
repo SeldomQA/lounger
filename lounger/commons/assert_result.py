@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 import requests
 from pytest_req.utils import jmespath
@@ -12,14 +12,14 @@ ASSERT_TYPES: dict = {
     "not_equal": lambda actual, expected: actual != expected,  # Assert inequality
     "contains": lambda actual, expected: expected in actual,  # Assert that actual contains expected
     "not_contains": lambda actual, expected: expected not in actual,  # Assert that actual does not contain expected
-    "type": lambda actual, expected: type(actual) == type(expected),  # Assert data type match
+    "type": lambda actual, expected: type(actual) is type(expected),  # Assert data type match
     "length": lambda actual, expected: len(actual) == int(expected),  # Assert length match
     "greater": lambda actual, expected: actual > expected,  # Assert greater than
     "greater_equal": lambda actual, expected: actual >= expected,  # Assert greater than or equal to
     "less": lambda actual, expected: actual < expected,  # Assert less than
     "less_equal": lambda actual, expected: actual <= expected,  # Assert less than or equal to
-    "is_null": lambda actual,expected: actual == None,
-    "is_not_null": lambda actual,expected: actual != None
+    "is_null": lambda actual, expected: actual is None,
+    "is_not_null": lambda actual, expected: actual is not None
 }
 
 

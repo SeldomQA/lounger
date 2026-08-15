@@ -1,5 +1,5 @@
-from .factory import DatabaseFactory
 from .fabric_tunnel import FabricSSHTunnel
+from .factory import DatabaseFactory
 from .fixtures import (
     create_mssql_fixture,
     create_mysql_fixture,

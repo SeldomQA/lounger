@@ -103,9 +103,9 @@ def test_database_factory_mssql(monkeypatch):
 def test_db_driver_modules_importable_without_drivers():
     """Importing the db modules must NOT pull in pymssql / psycopg2 / pymongo."""
     before = set(sys.modules)
+    import lounger.db_operation.mongo_db  # noqa: F401
     import lounger.db_operation.mssql_db  # noqa: F401
     import lounger.db_operation.postgres_db  # noqa: F401
-    import lounger.db_operation.mongo_db  # noqa: F401
     imported = set(sys.modules) - before
     assert "pymssql" not in imported
     assert "psycopg2" not in imported

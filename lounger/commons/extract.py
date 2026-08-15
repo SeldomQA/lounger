@@ -1,5 +1,5 @@
 import copy
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 from pytest_req.utils.jmespath import jmespath
 

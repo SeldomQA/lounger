@@ -1,5 +1,5 @@
 import re
-from typing import Dict, Any
+from typing import Any, Dict
 
 from lounger.log import log
 from lounger.utils import cache

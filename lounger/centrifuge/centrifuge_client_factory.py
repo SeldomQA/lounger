@@ -1,6 +1,8 @@
-from lounger.centrifuge.centrifuge_client import CentrifugeClient
-from lounger.centrifuge.centrifuge_client import ClientEventLoggerHandler
-from lounger.centrifuge.centrifuge_client import SubscriptionEventLoggerHandler
+from lounger.centrifuge.centrifuge_client import (
+    CentrifugeClient,
+    ClientEventLoggerHandler,
+    SubscriptionEventLoggerHandler,
+)
 from lounger.log import log
 
 

@@ -124,7 +124,7 @@ def create_scaffold(project_name: str, type: str) -> None:
             log.error(f"Failed to create {dest_rel}: {e}")
 
     log.info(f"🎉 Project '{project_name}' created successfully.")
-    log.info(f"👉 Go to the project folder and run 'pytest' to start testing.")
+    log.info("👉 Go to the project folder and run 'pytest' to start testing.")
 
 
 if __name__ == '__main__':

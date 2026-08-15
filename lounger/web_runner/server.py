@@ -11,7 +11,7 @@ from . import state
 from .collect import get_test_cases
 from .executor import _execute_tests
 from .html import _FALLBACK_HTML
-from .state import _scan_dir, _active_runs, _runs_lock
+from .state import _active_runs, _runs_lock
 from .tree import _build_case_tree
 
 # HTML page cache (module-local)
@@ -46,7 +46,7 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
             self._serve_json(get_test_cases())
         elif path == "/api/tree":
             cases = get_test_cases()
-            tree = _build_case_tree(cases, _scan_dir)
+            tree = _build_case_tree(cases, state._scan_dir)
             self._serve_json({"tree": tree, "flat": cases})
         elif path == "/api/runs":
             self._serve_runs()

@@ -1,5 +1,5 @@
 import os
-from typing import Any, Optional, List, Tuple, Dict
+from typing import Any, Dict, List, Optional, Tuple
 
 import pytest
 import yaml

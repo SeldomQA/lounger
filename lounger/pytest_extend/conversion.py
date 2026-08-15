@@ -1,10 +1,10 @@
 """
 Data type conversion of different files
 """
+import codecs
 import csv
 import json
 from itertools import islice
-import codecs
 
 import yaml
 from openpyxl import load_workbook

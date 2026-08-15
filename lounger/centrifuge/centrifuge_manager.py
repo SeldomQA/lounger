@@ -1,8 +1,7 @@
 import asyncio
 import threading
 
-from lounger.centrifuge.centrifuge_client_factory import ClientRole
-from lounger.centrifuge.centrifuge_client_factory import create_client, subscribe_to_shop_channel
+from lounger.centrifuge.centrifuge_client_factory import ClientRole, create_client, subscribe_to_shop_channel
 from lounger.commons.load_config import global_test_config
 from lounger.log import log
 from lounger.utils.cache import cache

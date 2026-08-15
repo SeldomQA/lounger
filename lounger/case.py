@@ -4,7 +4,7 @@ import runpy
 import sys
 import time
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
 
 from lounger.commons.assert_result import api_validate
 from lounger.commons.extract import extract_var

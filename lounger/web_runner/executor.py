@@ -8,8 +8,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from lounger.web_runner.state import _scan_dir, _active_runs, _runs_lock, _strip_ansi
-
+from lounger.web_runner import state as _state
+from lounger.web_runner.state import _active_runs, _runs_lock, _strip_ansi
 
 VERBOSITY_FLAGS = {
     "quiet":   ["-q"],
@@ -21,7 +21,7 @@ VERBOSITY_FLAGS = {
 
 def _execute_tests(run_id: str, nodeids: list[str], verbosity: str = "verbose") -> None:
     """Run pytest in a subprocess, push lines into the run queue."""
-    cwd = str(Path(_scan_dir).resolve())
+    cwd = str(Path(_state._scan_dir).resolve())
     tmpdir = Path(cwd) / "collected_cases"
     tmpdir.mkdir(parents=True, exist_ok=True)
     target_file = tmpdir / f"_web_run_{run_id}.json"

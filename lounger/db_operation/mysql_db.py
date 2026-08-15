@@ -3,11 +3,25 @@ MySQL DB API
 """
 from typing import Any, Optional
 
-import pymysql.cursors
-
 from lounger.db_operation.base_db import SQLBase
 from lounger.db_operation.fabric_tunnel import FabricSSHTunnel
 from lounger.db_operation.resource import MySQLConnectionConfig, MySQLResource, SSHTunnelConfig
+
+
+def _get_pymysql():
+    """
+    Import PyMySQL lazily so this module can be imported without the driver.
+    The error only surfaces when a connection is actually created.
+    """
+    try:
+        import pymysql
+        import pymysql.cursors
+    except ModuleNotFoundError as e:
+        raise ModuleNotFoundError(
+            "PyMySQL is required for MySQL support. "
+            "Install with: pip install lounger[db-mysql]"
+        ) from e
+    return pymysql
 
 
 class MySQLDB(SQLBase):
@@ -22,6 +36,7 @@ class MySQLDB(SQLBase):
         :param password:
         :param database:
         """
+        pymysql = _get_pymysql()
         self.connection = pymysql.connect(host=host,
                                           port=int(port),
                                           user=user,

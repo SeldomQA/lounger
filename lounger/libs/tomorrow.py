@@ -2,9 +2,9 @@
 this is tomorrow3 library, Easier way to use thread pool executor.
 GitHub: https://github.com/dflupu/tomorrow3
 """
+from concurrent.futures import ThreadPoolExecutor
 from functools import wraps
 from threading import Semaphore
-from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
 

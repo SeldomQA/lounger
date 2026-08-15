@@ -1,6 +1,6 @@
 import pytest
-
 from api.clients.posts_api import PostsAPI
+
 from lounger.settings import settings
 
 
