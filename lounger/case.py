@@ -11,6 +11,11 @@ from lounger.commons.extract import extract_var
 from lounger.commons.model import verify_model
 from lounger.commons.template_engine import template_replace
 from lounger.log import log
+from lounger.plugin_hooks import (
+    run_after_execute_step,
+    run_before_execute_step,
+    run_on_execute_step_error,
+)
 
 
 def execute_script(this_file_path: Path, pre_script: str):
@@ -39,7 +44,15 @@ def execute_script(this_file_path: Path, pre_script: str):
 
 def execute_step(case_step: Dict[str, Any]) -> None:
     """
-    Execute a test case
+    Execute a test case step.
+
+    Runs the execution-chain hooks (see ``lounger.plugin_hooks``):
+
+    1. ``run_before_execute_step(case_step)`` — before the request is sent;
+    2. the step is dispatched (request / centrifuge);
+    3. on failure ``run_on_execute_step_error(case_step, exc)`` fires and the
+       exception is re-raised;
+    4. ``run_after_execute_step(case_step, resp)`` — after a successful step.
 
     :param case_step: Test case step
     :return: None
@@ -48,20 +61,31 @@ def execute_step(case_step: Dict[str, Any]) -> None:
     step_name = case_step.get('name')
     log.info(f"Executing test step: {step_name}")
 
+    # Execution-chain hook: before the request is sent
+    run_before_execute_step(case_step)
+
     # Verify model and replace templates
     validated_case = verify_model(case_step)
     processed_case = template_replace(validated_case)
 
-    if case_step.get("centrifuge"):
-        # New Send centrifuge
-        from lounger.centrifuge import centrifuge_manager
-        resp = centrifuge_manager.send_centrifuge(**processed_case["centrifuge"])
-    elif case_step.get("request"):
-        # Send request
-        from lounger.request import request_client
-        resp = request_client.send_request(**processed_case["request"])
-    else:
-        raise TypeError("Currently, only WebSocket and HTTP (request) protocols are supported.")
+    try:
+        if case_step.get("centrifuge"):
+            # New Send centrifuge
+            from lounger.centrifuge import centrifuge_manager
+            resp = centrifuge_manager.send_centrifuge(**processed_case["centrifuge"])
+        elif case_step.get("request"):
+            # Send request
+            from lounger.request import request_client
+            resp = request_client.send_request(**processed_case["request"])
+        else:
+            raise TypeError("Currently, only WebSocket and HTTP (request) protocols are supported.")
+    except Exception as exc:
+        # Execution-chain hook: failure callback
+        run_on_execute_step_error(case_step, exc)
+        raise
+
+    # Execution-chain hook: after the request completed successfully
+    run_after_execute_step(case_step, resp)
 
     # Sleep if a sleep duration is specified
     if sleep_sec := case_step.get("sleep"):

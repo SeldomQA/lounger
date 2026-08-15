@@ -1,6 +1,7 @@
 import inspect
 import json
 import os
+import time
 import types
 from datetime import datetime, timezone
 from io import StringIO
@@ -11,12 +12,22 @@ from pytest_req.log import log_cfg
 
 from lounger import __version__
 from lounger.log import log
-from lounger.plugin_hooks import build_test_run_summary, run_after_run_finish, run_after_session_finish
+from lounger.plugin_hooks import (
+    TestRunResult,
+    build_test_run_summary,
+    run_after_case_finish,
+    run_after_run_finish,
+    run_after_session_finish,
+)
 from lounger.pytest_extend.screenshot import screenshot_base64
 
 LOG_STREAM = StringIO()
 
 html_title = "Lounger Test Report"
+
+# Per-item timing for after_case_finish (nodeid -> monotonic start time)
+_item_start_times: dict[str, float] = {}
+_item_finished: set[str] = set()
 
 logo = rf"""
     __                                 
@@ -58,6 +69,8 @@ def pytest_runtest_setup(item: Any) -> None:
     """
     Called to perform the setup phase for a test item.
     """
+    _item_start_times[item.nodeid] = time.monotonic()
+
     env_names = [mark.args[0] for mark in item.iter_markers(name="env")]
     if env_names:
         if item.config.getoption("--env") not in env_names:
@@ -109,7 +122,48 @@ def pytest_runtest_makereport(item):
         LOG_STREAM.truncate(0)
         LOG_STREAM.seek(0)
 
+        # Case-level hook: fired before the report is written (3.12)
+        _trigger_after_case_finish(item, report)
+    elif report.when == 'setup' and not report.passed:
+        # Setup-time failures/skips never reach 'call'; notify once here.
+        _trigger_after_case_finish(item, report)
+
     report.extras = extra
+
+
+def _trigger_after_case_finish(item, report) -> None:
+    """
+    Fire the ``after_case_finish`` hooks exactly once per test item.
+
+    Runs from ``pytest_runtest_makereport`` (``when == "call"``) — i.e. before
+    the HTML report is written — so hooks can attach failure actions or send
+    per-case notifications.
+
+    :param item: The pytest test item.
+    :param report: The ``TestReport`` whose ``when == "call"``.
+    """
+    nodeid = item.nodeid
+    if nodeid in _item_finished:
+        return
+    _item_finished.add(nodeid)
+
+    start = _item_start_times.pop(nodeid, None)
+    duration = round(time.monotonic() - start, 3) if start is not None else 0.0
+
+    if report.passed:
+        status = "passed"
+    elif report.failed:
+        status = "failed"
+    else:
+        status = "skipped"
+
+    result = TestRunResult(
+        nodeid=nodeid,
+        status=status,
+        duration=duration,
+        description=str(getattr(item.function, "__doc__", "") or ""),
+    )
+    run_after_case_finish(result)
 
 
 def pytest_addoption(parser: Any) -> None:
@@ -230,6 +284,10 @@ def pytest_sessionfinish(session, exitstatus):
     option = getattr(session.config, "option", None)
     if option is not None:
         report_path = getattr(option, "htmlpath", None)
+
+    # Release per-item timing state (long-running / web_runner processes).
+    _item_start_times.clear()
+    _item_finished.clear()
 
     run_after_session_finish(summary)
     run_after_run_finish(report_path, summary)
