@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 
 from . import state
 from .collect import get_test_cases
-from .executor import _execute_tests
+from .executor import _execute_tests, archive_finished_runs
 from .html import _FALLBACK_HTML
 from .state import _active_runs, _runs_lock
 from .tree import _build_case_tree
@@ -211,6 +211,8 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
                             "exit_code": run_info.get("exit_code", -1),
                             "status": status,
                         })
+                        # archive finished runs to keep memory bounded (3.8 §1)
+                        archive_finished_runs()
                         break
                     self._sse_event({"heartbeat": True})
         except (BrokenPipeError, ConnectionResetError):

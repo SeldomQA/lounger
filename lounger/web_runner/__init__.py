@@ -10,6 +10,8 @@ CLI access via:
 
 from pathlib import Path
 
+from lounger.log import log
+
 from . import state
 from .collect import get_test_cases  # noqa: F401 — public API
 from .server import _RequestHandler, _ThreadingHTTPServer
@@ -28,11 +30,11 @@ def main(host: str = "127.0.0.1", port: int = 5000, scan_dir: str = "."):
     state._scan_dir = str(Path(scan_dir).resolve())
 
     server = _ThreadingHTTPServer((host, port), _RequestHandler)
-    print(f"🚀 lounger web runner → http://{host}:{port}")
-    print(f"   Project: {state._scan_dir}")
-    print("   Press Ctrl+C to stop.")
+    log.info(f"🚀 lounger web runner → http://{host}:{port}")
+    log.info(f"   Project: {state._scan_dir}")
+    log.info("   Press Ctrl+C to stop.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\n👋 Shutting down.")
+        log.info("👋 Shutting down.")
         server.shutdown()

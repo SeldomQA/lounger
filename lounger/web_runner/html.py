@@ -293,8 +293,8 @@ function renderNode(node, depth) {
     if (hasCases) html += ' <span class="count">(' + node.case_count + ')</span>';
     html += '</span>';
     if (hasCases) {
-      const idsJson = JSON.stringify(node.cases.map(c => c.nodeid));
-      html += '<button class="run-btn" data-ids=\'' + idsJson + '\' onclick="event.stopPropagation(); runFile(this.dataset.ids)" title="运行此文件全部用例">▶▶</button>';
+      const idsJson = encodeURIComponent(JSON.stringify(node.cases.map(c => c.nodeid)));
+      html += '<button class="run-btn" data-ids="' + idsJson + '" onclick="event.stopPropagation(); runFile(this.dataset.ids)" title="运行此文件全部用例">▶▶</button>';
     }
     html += '</div>';
     if (hasCases) {
@@ -456,7 +456,9 @@ async function runSingle(nodeid) {
 }
 
 function runFile(nodeidsStr) {
-  const ids = JSON.parse(nodeidsStr);
+  // data-ids carries encodeURIComponent(JSON.stringify(...)) so quotes in
+  // nodeids cannot break the HTML attribute (3.8 §4)
+  const ids = JSON.parse(decodeURIComponent(nodeidsStr));
   for (const nid of ids) lastRunIds.add(nid);
   renderTree();
   startRun(ids);
