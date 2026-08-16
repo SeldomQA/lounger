@@ -1,3 +1,59 @@
+## 1.5.0(2026-08-16)
+
+本版本为一次**修复 bug + 重构优化 + 更正历史设计错误**的发布，同时补齐 P0/P1/P2 开发计划（详见 `docs/development_plan.md`）。
+
+### 修复 Bug
+
+* 修复：`po.py` 手抄 Playwright API 漂移。
+    * 修复：`dispatch_event` 参数名错误（`eventInit` → `event_init`），调用时传参会抛 `TypeError`。
+    * 修复：`timeit` 参数笔误、`input_value` 重复定义（历史遗留）。
+    * 新增 `Locator.__getattr__` 透传未手抄的 Playwright 方法，从根上消除"遗漏方法"类漂移。
+* 修复：`load_config.py` 冗余的 `def base_url()` 定义导致 ruff F811、CI 失败。
+* 修复：web_runner 启动信息用 `print` 输出 emoji，在 GBK 控制台（Windows 默认）直接崩溃——改用 loguru。
+* 修复：web_runner `main()` 设置的 `_scan_dir` 不生效（`--project` 参数无效），统一走 `state` 模块访问。
+* 修复：`html.py` 将 `JSON.stringify` 结果拼进 `data-ids` 属性，含引号的 nodeid 会破坏 HTML——改用 `encodeURIComponent`。
+* 修复：`.gitignore` 中文注释为 GBK 编码，导致 black 等按 UTF-8 读取的工具崩溃。
+
+### 重构与优化
+
+* 配置系统收尾（settings 统一入口）。
+    * `YamlSettingsSource` 项目根锚定：从 CWD 向上查找 `config/config.yaml`，换目录执行不再丢配置。
+    * 文件 mtime 缓存：编辑配置无需重启进程，下次 `get()` 自动生效。
+    * 新增 `EnvConfigSource`：`LOUNGER_*` 环境变量覆盖 YAML。
+    * `base_url` 改为惰性代理，兼容 `base_url()` 调用与 `f"{base_url}"` 值用法两种历史形态。
+* 请求层双轨合并：`HttpRequest` 委托 `RequestClient`（唯一主路径），`@api` 断言/提取复用 `assert_result` 表达式（`status_code` / `body.<jmespath>` / 裸 JMESPath）。
+* 执行链 hook 化：`case.py::execute_step` 增加 `before/after/error` 三个执行链 hook，业务侧从此不用 monkey patch 框架。
+* web_runner 解耦：抽取 `lounger.services.case_discovery` / `test_execution`，CLI/Web/平台共用；运行历史归档落盘 `reports/runs/`，内存有界。
+* 收集子进程异常返回结构化 `{"error": ...}`，供前端展示。
+* Cache 语义完善：TTL 惰性过期、`<namespace>:<key>` 命名空间、热路径日志降级（`get` INFO→DEBUG）。
+* 全量类型标注：`mypy` 通过（80 源文件），`[tool.mypy]` / `ruff` / `black` 配置进 `pyproject.toml`，pre-commit 钩子（ruff + black + mypy）与 CI 集成。
+
+### 更正之前的错误设计
+
+* 依赖收敛：主依赖只保留核心（pytest 插件、yaml、click、openpyxl 等）；DB/AI/Playwright 全部下沉到 extras（`db-mysql` / `db-mssql` / `db-postgres` / `db-ssh` / `ai` / `dev`）。
+* 可选驱动惰性导入：`pymysql` / `pymssql` / `psycopg2` 顶层不再抛 `ModuleNotFoundError`，无驱动环境可正常 `import lounger`。
+* `ConfigUtils` 标记弃用（DeprecationWarning），统一走 `lounger.settings`。
+* `--html-title` / `--env` 的 `default=[]` 改为 `default=None`（语义正确）。
+* ExtractVar 自动扫描弃用：模板函数显式注册（`lounger.runtime.register_template_func` / `LOUNGER_TEMPLATE_FUNCTIONS`）。
+
+### 文档
+
+* 新增 `docs/project_guide.md`（业务项目开发指南）、`docs/plugin_hooks.md`（扩展点）、`docs/run_json.md`（平台执行协议）。
+* 新增 mkdocs 文档站（`mkdocs.yml` + `docs/index.md`）。
+* 脚手架 `project_temp/api` 增加 README 演练。
+
+## 1.3.3(2026-06-30)
+
+* 功能：统一配置入口 `lounger.settings`（Yaml/Dict source、`get/get_int/get_bool`）。
+* 功能：数据库资源管理层（`MySQLResource` / `SSHTunnelConfig` / `build_mysql_resource`）。
+* 功能：`DatabaseFactory` + fixture 工厂（`create_mysql_fixture` 等 4 个）。
+* 功能：plugin hooks 机制（`register_after_session_finish` / `register_after_run_finish`）。
+* 功能：模板函数显式注册（`lounger.runtime.register_template_func`）。
+* 功能：请求断言统一入口 `expect`（`to_have_path_*` 系列）。
+* 修复：参数化测试类方法丢 `self`（`pytest_collection_modifyitems` bound method 重绑定）。
+* 修复：`_files_load` 文件句柄泄漏。
+* 修复：`save_response` 保存响应。
+
 ## 1.3.2(2026-05-22)
 
 * lounger测试运行器优化。

@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [project]
 name = "lounger"
-version = "1.3.3"
+version = "1.5.0"
 description = "Next generation automated testing framework."
 readme = "README.md"
 authors = [
