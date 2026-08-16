@@ -23,5 +23,6 @@ def get_test_cases(scan_dir: str | None = None) -> list[dict]:
         # structured error surfaced to the front-end (3.8 §5)
         return [{"error": result["error"]}]
 
+    assert isinstance(result, list)
     state.set_cases_cache(result)
     return result

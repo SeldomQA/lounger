@@ -99,7 +99,7 @@ class Cache:
             json.dump(data, f, ensure_ascii=False)
 
     @classmethod
-    def clear(cls, name: str = None, namespace: str = None) -> None:
+    def clear(cls, name: str | None = None, namespace: str | None = None) -> None:
         """
         Clear cached data.
 
@@ -120,7 +120,7 @@ class Cache:
                 cls._write_all(save_data)
 
     @classmethod
-    def set(cls, data: dict, ttl: float = None, namespace: str = None) -> None:
+    def set(cls, data: dict, ttl: float | None = None, namespace: str | None = None) -> None:
         """
         Set cached data.
 
@@ -141,7 +141,7 @@ class Cache:
             cls._write_all(save_data)
 
     @classmethod
-    def get(cls, name=None, namespace: str = None):
+    def get(cls, name=None, namespace: str | None = None):
         """
         Get cached data.
 
@@ -184,7 +184,7 @@ class DiskCache:
 
     _NAMESPACE = uuid.UUID("c875fb30-a8a8-402d-a796-225a6b065cad")
 
-    def __init__(self, cache_path=None, ttl: float = None):
+    def __init__(self, cache_path: str | None = None, ttl: float | None = None):
         """
         :param cache_path: Directory for cache files.
         :param ttl: Optional TTL in seconds; a cached file older than this is
@@ -244,7 +244,7 @@ class DiskCache:
 
         return wrapper
 
-    def clear(self, func_name: str = None) -> None:
+    def clear(self, func_name: str | None = None) -> None:
         """
         clear function cache
         :param func_name:

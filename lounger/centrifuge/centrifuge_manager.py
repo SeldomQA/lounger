@@ -34,6 +34,7 @@ class CentrifugeClientManager:
     Centrifuge Client Manager
     """
     _instance = None
+    _clients: dict = {}
 
     def __new__(cls):
         if cls._instance is None:

@@ -2,10 +2,10 @@ from functools import wraps
 from typing import Callable, Text, Tuple
 
 from lounger.log import log
-from lounger.utils import cache
+from lounger.utils.cache import cache
 
 
-def dependent_func(func_obj: Callable, key_name: Text = None, *out_args, **out_kwargs):
+def dependent_func(func_obj: Callable, key_name: Text | None = None, *out_args, **out_kwargs):
     """
     Dependent function decorator.
 
@@ -40,7 +40,7 @@ def dependent_func(func_obj: Callable, key_name: Text = None, *out_args, **out_k
     return decorator
 
 
-def _call_dependence(dependent_api: Callable or Text, func_name: Text, *args, **kwargs) -> Tuple:
+def _call_dependence(dependent_api: Callable, func_name: Text, *args, **kwargs) -> Tuple:
     """
     Execution dependent method.
     :param dependent_api:

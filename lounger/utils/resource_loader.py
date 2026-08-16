@@ -2,7 +2,7 @@ import inspect as _inspect
 import json
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, Literal
+from typing import Any, Dict, Literal, cast
 
 from lounger.log import log
 from lounger.pytest_extend.params import find_file
@@ -29,10 +29,10 @@ def resource_file(
 
     # Determine base directory
     if base_dir is None:
-        caller_frame = _inspect.currentframe().f_back
-        if caller_frame is None:
+        caller_frame = _inspect.currentframe()
+        if caller_frame is None or caller_frame.f_back is None:
             raise RuntimeError("Unable to determine caller directory.")
-        base_dir = Path(caller_frame.f_code.co_filename).parent.resolve()
+        base_dir = Path(caller_frame.f_back.f_code.co_filename).parent.resolve()
 
     # Locate file
     file_path = Path(find_file(file, base_dir))
@@ -54,7 +54,7 @@ def resource_file(
 
     # Extract by key if needed (for JSON)
     if return_type == "json" and key:
-        content = _get_nested_value(content, key)
+        content = _get_nested_value(cast(Dict[str, Any], content), key)
 
     return content
 
@@ -106,10 +106,10 @@ def resolve_resource_path(
         raise ValueError("File name must not be empty.")
 
     if base_dir is None:
-        caller_frame = _inspect.currentframe().f_back
-        if caller_frame is None:
+        caller_frame = _inspect.currentframe()
+        if caller_frame is None or caller_frame.f_back is None:
             raise RuntimeError("Unable to determine caller directory.")
-        base_dir = Path(caller_frame.f_code.co_filename).parent.resolve()
+        base_dir = Path(caller_frame.f_back.f_code.co_filename).parent.resolve()
 
     file_path = Path(find_file(file, base_dir))
     if not file_path or not file_path.exists():

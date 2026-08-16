@@ -49,8 +49,9 @@ class FabricSSHTunnel:
         self.timeout = int(timeout)
         self.ready_timeout = float(ready_timeout)
         self.ready_interval = float(ready_interval)
-        self._connection = None
-        self._tunnel_ctx = None
+        # fabric Connection and its forward_local context are dynamic (optional dep)
+        self._connection: Any = None
+        self._tunnel_ctx: Any = None
 
     def _wait_until_ready(self) -> None:
         """

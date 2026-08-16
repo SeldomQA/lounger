@@ -77,9 +77,10 @@ class SQLiteDB(SQLBase):
         self.cursor.execute(sql)
         last_id = self.cursor.lastrowid
         self.connection.commit()
-        return last_id
+        # lastrowid is None only when no rows were affected; after an INSERT it is an int
+        return last_id  # type: ignore[return-value]
 
-    def select_data(self, table: str, where: dict = None, one: bool = False) -> Any:
+    def select_data(self, table: str, where: dict | None = None, one: bool = False) -> Any:
         """
         select sql statement
         """
@@ -101,7 +102,7 @@ class SQLiteDB(SQLBase):
             sql += f""" where {self.dict_to_str_and(where)};"""
         self.execute_sql(sql)
 
-    def delete_data(self, table: str, where: dict = None) -> None:
+    def delete_data(self, table: str, where: dict | None = None) -> None:
         """
         delete table data
         """

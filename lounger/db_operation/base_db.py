@@ -55,29 +55,33 @@ class SQLBase:
             tmp_list.append(tmp)
         return ' and '.join(tmp_list)
 
-    def delete(self, table: str, where: dict = None) -> None:
+    def delete(self, table: str, where: dict | None = None) -> None:
         """
         delete table data
         """
-        return self.delete_data(table, where)
+        # delete_data is implemented on concrete SQL subclasses
+        return self.delete_data(table, where)  # type: ignore[attr-defined]
 
     def insert(self, table: str, data: dict) -> None:
         """
         insert sql statement
         """
-        return self.insert_data(table, data)
+        # insert_data is implemented on concrete SQL subclasses
+        return self.insert_data(table, data)  # type: ignore[attr-defined]
 
-    def select(self, table: str, where: dict = None, one: bool = False) -> list:
+    def select(self, table: str, where: dict | None = None, one: bool = False) -> list:
         """
         select sql statement
         """
-        return self.select_data(table, where, one)
+        # select_data is implemented on concrete SQL subclasses
+        return self.select_data(table, where, one)  # type: ignore[attr-defined]
 
     def update(self, table: str, data: dict, where: dict) -> None:
         """
         update sql statement
         """
-        return self.update_data(table, data, where)
+        # update_data is implemented on concrete SQL subclasses
+        return self.update_data(table, data, where)  # type: ignore[attr-defined]
 
     def __enter__(self):
         """
@@ -89,4 +93,5 @@ class SQLBase:
         """
         Context manager exit: always close the connection.
         """
-        self.close()
+        # close is implemented on concrete SQL subclasses
+        self.close()  # type: ignore[attr-defined]

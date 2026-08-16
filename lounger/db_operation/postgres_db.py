@@ -98,7 +98,7 @@ class PostgresDB(SQLBase):
         sql = f"INSERT INTO {table} ({key}) VALUES ({value})"
         self.execute_sql(sql)
 
-    def select_data(self, table: str, where: dict = None, one: bool = False) -> Any:
+    def select_data(self, table: str, where: dict | None = None, one: bool = False) -> Any:
         """
         Select SQL statement
         """
@@ -118,7 +118,7 @@ class PostgresDB(SQLBase):
         sql = f"UPDATE {table} SET {set_clause} WHERE {where_clause}"
         self.execute_sql(sql)
 
-    def delete_data(self, table: str, where: dict = None) -> None:
+    def delete_data(self, table: str, where: dict | None = None) -> None:
         """
         Delete SQL statement
         """

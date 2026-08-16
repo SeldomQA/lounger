@@ -1,6 +1,8 @@
 """
 A function that generates random data
 """
+from __future__ import annotations
+
 import datetime
 import hashlib
 import random
@@ -8,6 +10,7 @@ import re
 import sys
 import time
 import uuid
+from typing import cast
 
 import requests
 from dateutil.relativedelta import relativedelta
@@ -158,7 +161,7 @@ def get_md5(val: str = "") -> str:
     if getattr(val, "encode", None):
         ret = hashlib.md5(val.encode("utf-8")).hexdigest()
     else:
-        ret = hashlib.md5(val).hexdigest()
+        ret = hashlib.md5(cast(bytes, val)).hexdigest()
 
     return ret
 
@@ -191,7 +194,7 @@ def get_int64(min_size=1):
     return random.randint(min_size, 2 ** 63 - 1)
 
 
-def get_float(min_size: float = None, max_size: float = None) -> float:
+def get_float(min_size: float | None = None, max_size: float | None = None) -> float:
     """
     return a random float
     sames as the random method but automatically sets min and max
@@ -271,7 +274,7 @@ def yes(specifier=0) -> int:
     return choice
 
 
-def get_words(count: int = 0, as_str: bool = True, words=None) -> str:
+def get_words(count: int = 0, as_str: bool = True, words=None) -> str | list[str]:
     """get some amount of random words
     :param count: integer, how many words you want, 0 means a random amount (at most 20)
     :param as_str: boolean, True to return as string, false to return as list of words
@@ -291,10 +294,10 @@ def get_words(count: int = 0, as_str: bool = True, words=None) -> str:
 
 def get_word(words=None) -> str:
     """get word"""
-    return get_words(1, as_str=True, words=words)
+    return cast(str, get_words(1, as_str=True, words=words))
 
 
-def get_birthday(as_str: bool = False, start_age: int = 18, stop_age: int = 100) -> [str, datetime]:
+def get_birthday(as_str: bool = False, start_age: int = 18, stop_age: int = 100) -> str | datetime.date:
     """
     return a random YYYY-MM-DD
     :param as_str: boolean, true to return the bday as a YYYY-MM-DD string
@@ -303,7 +306,7 @@ def get_birthday(as_str: bool = False, start_age: int = 18, stop_age: int = 100)
     :returns: datetime.date|string
     """
     age = random.randint(start_age, stop_age)
-    year = (datetime.datetime.now(tz=datetime.UTC) - datetime.timedelta(weeks=(age * 52))).year
+    year = (datetime.datetime.now(tz=datetime.timezone.utc) - datetime.timedelta(weeks=(age * 52))).year
     month = random.randint(1, 12)
     if month == 2:
         day = random.randint(1, 28)
@@ -312,14 +315,17 @@ def get_birthday(as_str: bool = False, start_age: int = 18, stop_age: int = 100)
     else:
         day = random.randint(1, 31)
 
-    birthday = datetime.date(year, month, day)
+    birthday: datetime.date | str = datetime.date(year, month, day)
     if as_str:
-        birthday = "{:%Y-%m-%d}".format(birthday)
+        birthday = "{:%Y-%m-%d}".format(cast(datetime.date, birthday))
 
     return birthday
 
 
-def get_past_datetime(now=None, strftime=False) -> datetime:
+def get_past_datetime(
+        now: datetime.datetime | datetime.timedelta | None = None,
+        strftime: bool = False,
+) -> datetime.datetime | str:
     """
     a datetime guaranteed to be in the past from now.
     return: 2001-06-13 00:11:33.168502
@@ -339,7 +345,10 @@ def get_past_datetime(now=None, strftime=False) -> datetime:
     return data_time
 
 
-def get_future_datetime(now=None, strftime=False) -> datetime:
+def get_future_datetime(
+        now: datetime.datetime | datetime.timedelta | None = None,
+        strftime: bool = False,
+) -> datetime.datetime | str:
     """
     a datetime guaranteed to be in the future from now
     return: 2034-02-23 04:59:41.168502
@@ -359,7 +368,7 @@ def get_future_datetime(now=None, strftime=False) -> datetime:
     return data_time
 
 
-def get_now_datetime(strftime=False) -> [str, datetime]:
+def get_now_datetime(strftime: bool = False) -> str | datetime.datetime:
     """
     Get date time, default to current day。
     :return:
@@ -380,7 +389,7 @@ def get_past_time() -> str:
     return date_time
 
 
-def get_future_time() -> datetime:
+def get_future_time() -> str:
     """
     Gets the future date time.
     :return: 2022-10-24 19:52:21
@@ -403,7 +412,7 @@ def get_date(day=None) -> str:
     return date
 
 
-def get_month(month: int = None) -> str:
+def get_month(month: int | None = None) -> str:
     """
     Get month, default to current month.
     :param month:
@@ -417,7 +426,7 @@ def get_month(month: int = None) -> str:
     return date
 
 
-def get_year(year: int = None) -> str:
+def get_year(year: int | None = None) -> str:
     """
     Get year, default to current month.
     :param year:
@@ -431,7 +440,7 @@ def get_year(year: int = None) -> str:
     return date
 
 
-def get_phone(operator: str = None) -> str:
+def get_phone(operator: str | None = None) -> str:
     """
     get phone number
     :return:
@@ -478,7 +487,7 @@ def online_timestamp() -> str:
     return ts
 
 
-def online_now_datetime() -> [str, datetime]:
+def online_now_datetime() -> str:
     """
     Get online date time, default to current day。
     :return:

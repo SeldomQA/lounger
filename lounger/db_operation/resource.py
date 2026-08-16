@@ -55,7 +55,8 @@ class MySQLResource:
         self.connection_config = connection
         self.tunnel_config = tunnel
         self._tunnel: FabricSSHTunnel | None = None
-        self._db = None
+        # MySQLDB is lazily imported inside connect(); typed as Any to avoid a circular import
+        self._db: Any = None
 
     def connect(self):
         """

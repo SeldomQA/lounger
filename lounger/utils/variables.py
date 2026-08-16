@@ -56,6 +56,8 @@ class ExtractVar:
 
         try:
             spec = importlib.util.spec_from_file_location("conftest", conftest_path)
+            if spec is None or spec.loader is None:
+                raise RuntimeError("Unable to create module spec for conftest.py")
             conftest = importlib.util.module_from_spec(spec)
             registered_before = set(get_all_template_funcs())
             spec.loader.exec_module(conftest)

@@ -6,6 +6,7 @@ import os
 import time
 from collections.abc import Mapping
 from functools import wraps
+from typing import Any
 
 import requests
 from pytest_req.plugin import request
@@ -19,7 +20,7 @@ from lounger.request.request_client import request_client
 class HttpRequest:
     """lounger http request class"""
 
-    def __init__(self, base_url: str = None, *args, **kwargs):
+    def __init__(self, base_url: str | None = None, *args, **kwargs):
         self.base_url = base_url
         self.args = args
         self.kwargs = kwargs
@@ -59,7 +60,13 @@ class HttpRequest:
         return self._dispatch("PATCH", url, data=data, **kwargs)
 
 
-def api(describe: str = "", status_code: int = None, ret: str = None, check: dict = None, debug: bool = False):
+def api(
+    describe: str = "",
+    status_code: int | None = None,
+    ret: str | None = None,
+    check: dict | None = None,
+    debug: bool = False,
+):
     """
     Check API response data.
 
@@ -127,14 +134,14 @@ def api(describe: str = "", status_code: int = None, ret: str = None, check: dic
     return decorator
 
 
-def save_response(response: requests.Response | Mapping | list, filename: str = None):
+def save_response(response: requests.Response | Mapping | list, filename: str | None = None):
     """
     Save response content to a local file.
     :param response:
     :param filename:
     :return:
     """
-    data = response
+    data: Any = response
     ext = ".json"
 
     if isinstance(response, requests.Response):

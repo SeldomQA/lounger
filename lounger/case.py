@@ -18,7 +18,7 @@ from lounger.plugin_hooks import (
 )
 
 
-def execute_script(this_file_path: Path, pre_script: str):
+def execute_script(this_file_path: Path, pre_script: str) -> None:
     """
     Execute the hook function dynamically.
     :param this_file_path: function name
@@ -27,7 +27,7 @@ def execute_script(this_file_path: Path, pre_script: str):
     this_file_dir = this_file_path.parent
     sys.path.insert(0, str(this_file_dir))
 
-    _scrip_path = None
+    _scrip_path: str | None = None
     for root, _, files in os.walk(this_file_dir, topdown=False):
         for _file in files:
             if _file == pre_script:
@@ -38,6 +38,8 @@ def execute_script(this_file_path: Path, pre_script: str):
         break
 
     # running pre script
+    if _scrip_path is None:
+        raise FileNotFoundError(f"Pre-script '{pre_script}' not found under {this_file_dir}")
     log.info(f"🐍 Executing script {_scrip_path}")
     runpy.run_path(_scrip_path)
 

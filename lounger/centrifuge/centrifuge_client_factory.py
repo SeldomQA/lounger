@@ -39,7 +39,7 @@ def create_client(
     Create and configure a WebSocket client for B or C end.
     All business data (shop_id, tokens, etc.) is passed in explicitly.
     """
-    params = {
+    params: dict = {
         "address": websocket_url,
         "events": ClientEventLoggerHandler(),
         "headers": {"x-livechat-token": ''},

@@ -118,7 +118,7 @@ class RequestClient:
                 kwargs['headers'] = cache.get("default_headers") or {}
 
             # Process files if present
-            opened_files = []
+            opened_files: list[Any] = []
             if "files" in kwargs:
                 kwargs["files"], opened_files = self._files_load(kwargs["files"])
 

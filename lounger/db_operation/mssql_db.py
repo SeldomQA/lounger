@@ -109,7 +109,7 @@ class MSSQLDB(SQLBase):
         sql = f"""insert into {table} ({key}) values ({value})"""
         self.execute_sql(sql)
 
-    def select_data(self, table: str, where: dict = None, one: bool = False) -> Any:
+    def select_data(self, table: str, where: dict | None = None, one: bool = False) -> Any:
         """
         select sql statement
         """
@@ -131,7 +131,7 @@ class MSSQLDB(SQLBase):
             sql += f""" where {self.dict_to_str_and(where)};"""
         self.execute_sql(sql)
 
-    def delete_data(self, table: str, where: dict = None) -> None:
+    def delete_data(self, table: str, where: dict | None = None) -> None:
         """
         delete table data
         """

@@ -48,6 +48,7 @@ def _search_env_file_path(file_dir: Path, file_part_path: str) -> str:
     file_path = ""
     find_root_dir = file_dir.parent
     file_name = file_part_path.split("/")[-1]
+    assert Lounger.env is not None
     file_part = os.path.join(Lounger.env, file_part_path[:-len(file_name) - 1])
 
     for root, _, files in os.walk(find_root_dir, topdown=False):
@@ -91,7 +92,7 @@ def find_file(file: str, file_dir: Path) -> str:
         return file_path
 
 
-def file_data(file: str, line: int = 1, sheet: str = "Sheet1", key: str = None, end_line: int = None):
+def file_data(file: str, line: int = 1, sheet: str = "Sheet1", key: str | None = None, end_line: int | None = None):
     """
     Support file parametrize decorator.
 
@@ -149,7 +150,7 @@ def file_data(file: str, line: int = 1, sheet: str = "Sheet1", key: str = None, 
     return data(data_list)
 
 
-def data(datas, ids: list = None, scope=None):
+def data(datas, ids: list | None = None, scope=None):
     """
     lounger parametrize decorator
     :param datas:

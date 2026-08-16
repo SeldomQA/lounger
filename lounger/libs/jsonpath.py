@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 import sys
-from typing import Any, Callable, Dict, List, Union
+from typing import Any, Callable, Dict, List, Union, cast
 
 __all__ = ['jsonpath']
 
@@ -78,9 +78,9 @@ def jsonpath(
         if debug:
             print(f"trace {expr} / {path}")
         if expr:
-            x = expr.split(';')
-            loc = x[0]
-            x = ';'.join(x[1:])
+            parts = expr.split(';')
+            loc = parts[0]
+            x = ';'.join(parts[1:])
             if debug:
                 print(f"\t {loc} {type(obj)}")
             if loc == "*":
@@ -100,7 +100,7 @@ def jsonpath(
                         if key in obj:
                             trace(s('..', expr), obj[key], s(path, key))
                     else:
-                        if key < len(obj):
+                        if cast(int, key) < len(obj):
                             trace(s('..', expr), obj[key], s(path, key))
 
                 walk(loc, x, obj, path, f04)
@@ -300,8 +300,8 @@ if __name__ == '__main__':
     if not value:
         sys.exit(1)
 
-    with sys.stdout as f:
-        json.dump(value, f, sort_keys=True, indent=1)
-        f.write("\n")
+    with sys.stdout as out:
+        json.dump(value, out, sort_keys=True, indent=1)
+        out.write("\n")
 
     sys.exit(0)

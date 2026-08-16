@@ -11,7 +11,7 @@ Usage in a project's ``conftest.py``::
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 
@@ -53,7 +53,7 @@ def _build_mysql_resource_from_kwargs(kwargs: dict) -> Any:
 
 
 def create_mysql_fixture(
-    scope: str = "session",
+    scope: Literal["session", "package", "module", "class", "function"] = "session",
     config_source: Callable[[str], Any] | None = None,
     **connection_kwargs,
 ):
@@ -115,7 +115,7 @@ def create_mysql_fixture(
     return mysql_db
 
 
-def create_postgres_fixture(scope: str = "session", **connection_kwargs):
+def create_postgres_fixture(scope: Literal["session", "package", "module", "class", "function"] = "session", **connection_kwargs):
     """
     Create a pytest fixture that provides a PostgreSQL connection.
 
@@ -139,7 +139,7 @@ def create_postgres_fixture(scope: str = "session", **connection_kwargs):
     return postgres_db
 
 
-def create_mssql_fixture(scope: str = "session", **connection_kwargs):
+def create_mssql_fixture(scope: Literal["session", "package", "module", "class", "function"] = "session", **connection_kwargs):
     """
     Create a pytest fixture that provides a SQL Server connection.
 
@@ -163,7 +163,7 @@ def create_mssql_fixture(scope: str = "session", **connection_kwargs):
     return mssql_db
 
 
-def create_sqlite_fixture(scope: str = "session", db_path: str = ":memory:", **connection_kwargs):
+def create_sqlite_fixture(scope: Literal["session", "package", "module", "class", "function"] = "session", db_path: str = ":memory:", **connection_kwargs):
     """
     Create a pytest fixture that provides a SQLite connection.
 

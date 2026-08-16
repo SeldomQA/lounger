@@ -19,6 +19,8 @@ jobs:
         run: pip install -e ".[dev]"
       - name: Lint (ruff)
         run: ruff check lounger tests
+      - name: Type check (mypy)
+        run: mypy lounger --ignore-missing-imports
       - name: Unit tests
         run: pytest tests/ -m "not integration" -q
 

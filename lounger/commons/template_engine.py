@@ -24,7 +24,10 @@ def _render_handle_args(func, args):
 def _execute_method(value, match):
     func_name, func_args = match.groups()
     if '${' in func_args:
-        origin_args = re.search(r"\$\{.*?\}", func_args).group(0)
+        origin_match = re.search(r"\$\{.*?\}", func_args)
+        if origin_match is None:
+            return value
+        origin_args = origin_match.group(0)
         value = _render_handle_args(func_name, func_args)
         func_args = func_args.replace(origin_args, str(value))
 
@@ -37,11 +40,9 @@ def _execute_method(value, match):
     method = getattr(extract_var, func_name)
     try:
         # Parse arguments (supports $var syntax for cache lookup)
-        if not func_args.strip():
-            args = []
-        else:
+        args: list[Any] = []
+        if func_args.strip():
             raw_args = [arg.strip() for arg in func_args.split(",")]
-            args = []
             for arg in raw_args:
                 if arg.startswith("$") and len(arg) > 1:
                     var_value = cache.get(arg[1:])

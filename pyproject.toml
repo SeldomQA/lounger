@@ -32,8 +32,10 @@ dev = [
     "pytest",
     "ruff",
     "black",
+    "mypy",
+    "pre-commit",
     "playwright",
-    "pytest-playwright>=0.7.0,<0.8.0",
+    "pytest-playwright>=0.8.0,<0.9.0",
 ]
 db-mysql = ["PyMySQL>=1.1.1,<2.0.0"]
 db-mssql = ["pymssql>=2.2"]
@@ -58,6 +60,20 @@ target-version = "py310"
 [tool.ruff.lint]
 # 核心规则集：pycodestyle 关键错误 + pyflakes + import 排序
 select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.mypy]
+python_version = "3.10"
+# 第三方库无 stub 时忽略其导入错误（playwright/pytest_req 等）
+ignore_missing_imports = true
+no_implicit_optional = true
+check_untyped_defs = true
+warn_unused_ignores = false
+
+[[tool.mypy.overrides]]
+# po.py 依赖 playwright 私有 _impl 类型且大量动态 action 赋值（3.9 已用
+# __getattr__ 治理），mypy 无法完整建模——整体跳过类型检查
+module = "lounger.po"
+ignore_errors = true
 
 [tool.pytest.ini_options]
 # pytest tests/ = 单元级（默认）；pytest -m integration = 外部依赖级（3.1 约定）

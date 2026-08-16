@@ -32,7 +32,7 @@ def check_data(list_data: list) -> list:
     return list_data
 
 
-def csv_to_list(file: str = None, line: int = 1, end_line: int = None) -> list:
+def csv_to_list(file: str | None = None, line: int = 1, end_line: int | None = None) -> list:
     """
     Convert CSV file data to list
     :param file: Path to file
@@ -55,7 +55,7 @@ def csv_to_list(file: str = None, line: int = 1, end_line: int = None) -> list:
     return table_data
 
 
-def excel_to_list(file: str = None, sheet: str = "Sheet1", line: int = 1, end_line: int = None) -> list:
+def excel_to_list(file: str | None = None, sheet: str = "Sheet1", line: int = 1, end_line: int | None = None) -> list:
     """
     Convert Excel file data to list
     :param file: Path to file
@@ -71,12 +71,12 @@ def excel_to_list(file: str = None, sheet: str = "Sheet1", line: int = 1, end_li
         raise FileExistsError("Please specify the Excel file to convert.")
 
     excel_table = load_workbook(file)
-    sheet = excel_table[sheet]
+    excel_sheet = excel_table[sheet]
     if end_line is None:
-        end_line = sheet.max_row
+        end_line = excel_sheet.max_row
 
     table_data = []
-    for i in sheet.iter_rows(line, end_line):
+    for i in excel_sheet.iter_rows(line, end_line):
         line_data = []
         for field in i:
             line_data.append(field.value)
@@ -85,7 +85,7 @@ def excel_to_list(file: str = None, sheet: str = "Sheet1", line: int = 1, end_li
     return table_data
 
 
-def json_to_list(file: str = None, key: str = None) -> list:
+def json_to_list(file: str | None = None, key: str | None = None) -> list:
     """
     Convert JSON file data to list
     :param file: Path to file
@@ -113,7 +113,7 @@ def json_to_list(file: str = None, key: str = None) -> list:
     return list_data
 
 
-def yaml_to_list(file: str = None, key: str = None) -> list:
+def yaml_to_list(file: str | None = None, key: str | None = None) -> list:
     """
     Convert YAML file data to list
     :param file: Path to file

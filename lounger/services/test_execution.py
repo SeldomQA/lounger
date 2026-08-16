@@ -146,11 +146,13 @@ def _execute_in_thread(
 
     log_queue = runs[run_id]["queue"]
 
-    for raw_line in iter(proc.stdout.readline, ""):
-        clean = strip_ansi(raw_line)
-        log_queue.put(clean)
-        with lock:
-            runs[run_id]["logs"].append(clean)
+    stdout = proc.stdout
+    if stdout is not None:
+        for raw_line in iter(stdout.readline, ""):
+            clean = strip_ansi(raw_line)
+            log_queue.put(clean)
+            with lock:
+                runs[run_id]["logs"].append(clean)
 
     proc.wait()
 

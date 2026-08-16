@@ -1,6 +1,7 @@
 """
 Mongo DB API
 """
+from typing import Any
 
 
 def _get_mongo_client():
@@ -32,7 +33,8 @@ class MongoDB:
 
 
 if __name__ == '__main__':
-    mongo_db = MongoDB("localhost", 27017, "yapi")
+    # MongoDB.__new__ returns a pymongo Database object, not a MongoDB instance
+    mongo_db: Any = MongoDB("localhost", 27017, "yapi")
     col = mongo_db.list_collection_names()
     print("collection list: ", col)
     data = mongo_db.project.find_one()

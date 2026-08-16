@@ -60,7 +60,7 @@ def load_test_cases() -> List[Tuple[str, List[Dict], str]]:
 
     :return: List of tuples (test_name, merged_steps, source_file)
     """
-    testcases = []
+    testcases: List[Tuple[str, List[Dict], str]] = []
     lf = LoadConfig()
     case_paths = lf.get_case_path()
 
@@ -104,7 +104,7 @@ def load_test_cases() -> List[Tuple[str, List[Dict], str]]:
                     log.debug(f"No presteps files specified in {file_path}")
                     merged_steps = main_steps
                 else:
-                    presteps = []
+                    presteps: Optional[List[Dict]] = []
                     log.info(f"🔁 Loading pre-steps: {presteps_files}")
 
                     # Load each pre-steps file in order
@@ -118,6 +118,7 @@ def load_test_cases() -> List[Tuple[str, List[Dict], str]]:
                         full_path = os.path.normpath(os.path.join(project_root, rel_path))
                         try:
                             steps = load_yaml_steps(full_path)
+                            assert presteps is not None
                             presteps.extend(steps)
                             log.debug(f"✔️ Loaded {len(steps)} step(s) from '{rel_path}'")
                         except Exception as e:
@@ -166,7 +167,7 @@ def load_teststeps():
 """
     log.info(info)
     cases = load_test_cases()
-    parametrized_cases = [
+    parametrized_cases: List[Dict[str, Any]] = [
         {"name": name, "steps": steps, "file": file_path}
         for name, steps, file_path in cases
     ]
