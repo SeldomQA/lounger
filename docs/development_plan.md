@@ -97,7 +97,7 @@
 | thinking #6 / steps 步骤3 | 请求层双轨合并 | ✅ 完成（`HttpRequest` 委托 `RequestClient`；`@api` check/ret 复用 `assert_result`；`tests/test_request_merge.py` 覆盖两种写法一致性） | [3.5](#35-请求层双轨合并对齐-docsthinkingmd-第-6-条) |
 | thinking #7 / steps 步骤1 | 通知 / 后处理 hook 化 | ✅ 主体完成（`plugin_hooks` + `integrations/dingtalk` + `pytest_sessionfinish` 触发 + `after_case_finish` 用例级 hook + `docs/plugin_hooks.md` 使用文档 + 脚手架 `support/notify.py` 示例）；飞书渠道仍属 [F4](#f4-通知渠道扩展) | [3.12](#312-执行链--用例级-hook-化) + 路线图 [F4](#f4-通知渠道扩展) |
 | thinking #8 / steps 步骤2 | 执行链 hook 化（替代 monkey patch） | ✅ 完成（`case.py::execute_step` 三个执行链 hook + `plugin_hooks` 注册机制；`tests/test_execution_hooks.py` 覆盖调用时机/参数） | [3.12](#312-执行链--用例级-hook-化)（新增，steps 第二优先级） |
-| thinking #9 / steps 步骤4 | runner 与内核解耦（service 层） | ❌ 无 `lounger.services`，收集/执行/状态仍耦在 `web_runner` 目录 | [3.8](#38-web_runner-解耦与健壮性) + 路线图 [F1](#f1-平台化-api-完善) |
+| thinking #9 / steps 步骤4 | runner 与内核解耦（service 层） | ✅ 主体完成（`lounger/services/case_discovery.py` + `test_execution.py` 已抽离，web_runner 变薄包装；`web_runner.state` 仍持有运行状态，进一步收敛见 [3.8](#38-web_runner-解耦与健壮性) / [F1](#f1-平台化-api-完善)） | [3.8](#38-web_runner-解耦与健壮性) + 路线图 [F1](#f1-平台化-api-完善) |
 | thinking #10 | 官方推荐扩展方式文档 | 🟡 部分完成（`docs/plugin_hooks.md` 已覆盖扩展点/注册/共存规则；完整 `docs/project_guide.md` 未成文） | [P2 文档](#p2--质量与体验持续)（新增） |
 | thinking #1 / #2 | 三层边界 + 薄 conftest | 🟡 脚手架已拆 `support/db.py` / `support/notify.py`，`tests/conftest.py` 钉钉噪音已清除（随 3.1 套件重构移除）；缺 `docs/project_guide.md` 规范文档 | [3.1](#31-测试套件一键可跑最高优先级) + [P2 文档](#p2--质量与体验持续) |
 
@@ -106,9 +106,11 @@
 
 ### P0 — 可运行性与工程化（1 周内）
 
-#### 3.1 测试套件一键可跑（最高优先级）
+#### 3.1 测试套件一键可跑（最高优先级）✅ 已完成
 
 **目标**：`pip install -e .[dev] && pytest tests/` 在干净环境必须全绿（单元级）。
+
+**现状**：旧环境性用例（`test_db_mssql.py` / `test_request.py` / `test_playwright.py` / `test_config_var.py` 等）已移入 `samples/`；`tests/` 现为纯单元级（`pytest tests/` 全绿，当前 123 passed / 1 skipped）；`tests/conftest.py` 钉钉噪音已随重构移除；`integration` 标记已注册（见 `pyproject.toml`）。
 
 | 问题 | 方案 |
 |---|---|
@@ -121,11 +123,13 @@
 
 **约定**：`pytest tests/` = 单元级（默认）；`pytest -m integration` = 外部依赖级。
 
-#### 3.2 建立 CI（`.github/workflows/ci.yml`）
+#### 3.2 建立 CI（`.github/workflows/ci.yml`）✅ 已完成
 
 草案见 [5.2 节](#52-ci-工作流草案)。
 
-#### 3.3 仓库卫生
+**现状**：`.github/workflows/ci.yml` 已建立（unit 矩阵 3.10–3.13 + web job），CI 已跑通（`ruff check` + `pytest tests/`）。
+
+#### 3.3 仓库卫生 ✅ 已完成
 
 - `.gitignore` 补充：
   ```
@@ -133,15 +137,15 @@
   lounger/utils/cache_data.json
   tests/data/*.sqlite3
   reports/
-  *.csv            # 根目录个人数据文件
+  /*.csv            # 根目录个人数据文件
   ```
-- 移除已提交产物：`myapi/collected_cases/test_cases_info.json`（含绝对路径，换机器即失效）、`lounger/utils/cache_data.json`。
+- 移除已提交产物：`myapi/collected_cases/test_cases_info.json`（含绝对路径，换机器即失效）、`lounger/utils/cache_data.json`、`tests/data/db.sqlite3`（`git rm --cached` 完成）。
 - 清理根目录误放的个人文件（`boss_resume_screening_*.csv`、`测试工程师简历筛选标准.md`）。
 - 未跟踪的新代码（`docs/thinking.md`、`integrations/feishu.py`、新增测试）尽快决策入库。
 
 ### P1 — 架构收敛（2-4 周）
 
-#### 3.4 配置系统收尾（settings 已建立，做三件事）
+#### 3.4 配置系统收尾（settings 已建立，做三件事）✅ 已完成
 
 1. **锚定项目根**：`YamlSettingsSource` 从 CWD 向上查找 `config/config.yaml`，消除"换个目录配置就丢"的问题（当前 `test_config_var.py` 的根因）。
 2. **消除 import 时求值**：`load_config.py:21` 的 `base_url = base_url()` 是模块级常量，`RequestClient` 单例在 import 时绑定 → 改配置必须重启进程。改为惰性读取：
@@ -154,7 +158,7 @@
 3. **新增 `EnvConfigSource`**（环境变量覆盖 YAML），并给 `Settings.get` 加文件 mtime 缓存（当前每次全量解析 YAML）。
 4. **淘汰 `ConfigUtils`**：现仅 `settings.py` 内部使用，标记 deprecated，下个大版本移除。
 
-#### 3.5 请求层双轨合并（对齐 `docs/thinking.md` 第 6 条）
+#### 3.5 请求层双轨合并（对齐 `docs/thinking.md` 第 6 条）✅ 已完成
 
 现状两套 API 并存：`RequestClient`（YAML 引擎用）与 `HttpRequest + @api`（代码式 API Object）。
 
@@ -165,21 +169,21 @@
   3. 统一 `Expect` 断言入口（`request/assertions.py` 已有，补 doc 示例）；
   4. 增加"同一请求两种写法"的一致性单测。
 
-#### 3.6 ExtractVar 注册机制收尾
+#### 3.6 ExtractVar 注册机制收尾 ✅ 已完成
 
 已实现：`LOUNGER_TEMPLATE_FUNCTIONS` 显式注册 + 仅加载 conftest 本模块函数。
 - 继续：默认只读显式注册表；自动扫描降级为 fallback 并打 deprecation 警告；
 - 模板函数注册点从 conftest 抽到 `lounger/runtime`（支持插件注册）；
 - 与 `settings` 打通：`${config(x)}` / `${extract(x)}` 语义在文档中明确。
 
-#### 3.7 plugin.py 健壮性
+#### 3.7 plugin.py 健壮性 ✅ 已完成
 
 - `--html-title` / `--env` 的 `default=[]` 改为 `default=None`（语义正确）；
 - `pytest_runtest_makereport` 中 `page` 截图逻辑抽为可测试函数；
 - `--run-json` 执行协议（JSON 文件 → 按序执行 → 缺失用例告警）补文档 + 单测；
 - `pytest_collection_modifyitems` 的 docstring 装饰逻辑已加固（bound method / 非函数守卫），补一个"装饰后 docstring 正确"的显式单测（目前仅靠 `test_params_class_data` 间接覆盖）。
 
-#### 3.8 web_runner 解耦与健壮性
+#### 3.8 web_runner 解耦与健壮性 ✅ 已完成
 
 | 问题 | 方案 |
 |---|---|
@@ -189,7 +193,7 @@
 | `html.py` 将 `JSON.stringify` 结果拼进 `data-ids` 属性（含引号会破 HTML） | 改用 `encodeURIComponent` 或 `data-ids` + `dataset` |
 | 收集子进程超时/异常仅有 stderr 打印 | 返回结构化错误（`{"error": ...}`）供前端展示 |
 
-#### 3.9 po.py 手抄 API 漂移治理
+#### 3.9 po.py 手抄 API 漂移治理 ✅ 已完成
 
 988 行手抄 Playwright Locator 已出现 2 处漂移（`timeit`、`input_value` 重复）。短期：
 - 为 `Locator` 的每个包装方法补"参数透传正确性"单测（dummy driver 断言 kwargs）；
@@ -197,13 +201,13 @@
 - **A（推荐）**：包装层只保留 lounger 扩展能力（日志/describe），其余方法直接透传 Playwright Locator（`__getattr__` 委托），从根上消除漂移；
 - B：写脚本比对 `Locator` 与 playwright `Locator` 签名差异，纳入 CI。
 
-#### 3.10 Cache 与并发语义
+#### 3.10 Cache 与并发语义 ✅ 已完成
 
 - 现状：临时目录单文件 JSON，无 TTL，跨用例共享，web_runner 子进程语义不明确。
 - 方案：文件 + mtime 失效；键支持命名空间（`<project>:<key>`）；文档明确"缓存跨测试进程共享、测试间需 `cache.clear()`"的语义；
 - `memory_cache` / `DiskCache` 已有，补 TTL 与并发单测。
 
-#### 3.11 依赖与打包
+#### 3.11 依赖与打包 ✅ 已完成
 
 ```toml
 [project.optional-dependencies]
@@ -217,7 +221,7 @@ ai = ["autowing>=0.7.0"]
 - `python-dateutil==2.8.2` 放宽为 `>=2.8.2,<3`；
 - 主依赖只保留核心（pytest 插件、yaml、click），DB/AI/Playwright 全部 extras——降低基础安装体积。
 
-#### 3.12 执行链 / 用例级 hook 化
+#### 3.12 执行链 / 用例级 hook 化 ✅ 已完成
 
 > **来源**：`docs/thinking.md` #7 收尾 + #8；`docs/steps.md` 步骤 1-2（第二优先级）。
 > 现状：通知类 hook（session/run）已完成；**用例级 hook 完全缺失**——业务侧只能 monkey patch `lounger.case.execute_step`。
@@ -245,7 +249,7 @@ ai = ["autowing>=0.7.0"]
 
 **验收**：`tests/test_execution_hooks.py` 覆盖三个执行链 hook 的调用时机与参数；`after_case_finish` 在报告生成前触发；脚手架示例可运行。
 
-#### 3.13 数据库资源层收尾（DatabaseFactory / fixture 工厂）
+#### 3.13 数据库资源层收尾（DatabaseFactory / fixture 工厂）✅ 已完成
 
 > **来源**：`docs/thinking.md` #5。现状：`MySQLResource` / `build_mysql_resource` 已做（资源编排 + 隧道生命周期接管），
 > 但"统一工厂 + pytest fixture 工厂"未落地，且 Postgres/MSSQL 仍各自为政（`postgres_db.py` / `mssql_db.py` 顶层 import 可选驱动）。
@@ -269,12 +273,12 @@ ai = ["autowing>=0.7.0"]
 
 ### P2 — 质量与体验（持续）
 
-- **类型标注**：核心模块（settings / plugin_hooks / request / commons）已部分标注，扩展到全量；`mypy --strict` 或 `pyright` 进 pre-commit。
-- **代码风格**：`ruff` + `black` 配置进 `pyproject.toml`，`pre-commit` 钩子。
-- **日志规范**：错误路径统一 `log.error` + 异常链；避免在热路径打印 INFO（如 `cache.get` 每次调用都 INFO）。
-- **文档站**：`mkdocs` + `docs/` 现有内容整合（platform.md / steps.md / thinking.md / development_plan.md），补 API 参考（`pydoc-markdown`）。
-- **脚手架示例质量**：`project_temp` 与 `myapi`/`myweb` 示例保持一致并附 README 演练。
-- **官方推荐扩展方式文档（thinking #1/#2/#10）**：新增 `docs/project_guide.md`（业务项目开发指南），明确：
+- **类型标注**：核心模块（settings / plugin_hooks / request / commons）已部分标注，扩展到全量；`mypy --strict` 或 `pyright` 进 pre-commit。🟡 部分
+- **代码风格**：`ruff` + `black` 配置进 `pyproject.toml`，`pre-commit` 钩子。🟡 `[tool.ruff]` 已配置并进 CI；`black` / `pre-commit` 未做
+- **日志规范**：错误路径统一 `log.error` + 异常链；避免在热路径打印 INFO（如 `cache.get` 每次调用都 INFO）。🟡 `cache.get` 热路径日志已收敛（3.10）；全量审计未做
+- **文档站**：`mkdocs` + `docs/` 现有内容整合（platform.md / steps.md / thinking.md / development_plan.md），补 API 参考（`pydoc-markdown`）。❌
+- **脚手架示例质量**：`project_temp` 与 `myapi`/`myweb` 示例保持一致并附 README 演练。🟡 脚手架已有 hook/通知/DB 示例注释（3.12/3.13），README 演练未做
+- **官方推荐扩展方式文档（thinking #1/#2/#10）**：`docs/plugin_hooks.md` 已成文（3.12，覆盖执行链/用例级扩展点）；完整 `docs/project_guide.md`（业务项目开发指南）未做，明确：
   - 三层边界（框架内核 / 项目配置层 / 业务扩展层）；
   - `conftest.py` 只允许放三类东西（fixture / pytest hook / 少量 helper 导入注册），并给出"推荐 / 不推荐"清单（直接采用 thinking.md #10 的表述）；
   - 配置统一走 `settings`（不再直接依赖 `config.yaml` 文件结构）；
@@ -410,20 +414,20 @@ jobs:
 
 | 阶段 | 内容 | 预估 | 依赖 |
 |---|---|---|---|
-| **P0-1** | 测试套件可运行 + CI 建立 + 仓库卫生 | 1 周 | 无 |
-| **P1-1** | 配置锚定项目根 + `base_url` 惰性化 | 3-5 天 | P0-1 |
-| **P1-2** | 请求层合并 + ExtractVar 收尾 | 1 周 | P1-1 |
-| **P1-3** | web_runner 解耦 + 状态清理 + 收集规则插件化 | 1-2 周 | P1-1 |
-| **P1-4** | po.py 透传化 + 签名对齐测试 | 1 周 | 无 |
-| **P1-5** | 执行链 / 用例级 hook 化（thinking #7/#8、steps 步骤 1-2） | 1 周 | P0-1 |
-| **P1-6** | 数据库资源层收尾（DatabaseFactory + fixture 工厂 + 可选驱动惰性 import） | 1 周 | P1-1 |
-| **P1-7** | 官方推荐扩展方式文档（`docs/project_guide.md`） | 2-3 天 | P1-5 |
+| **P0-1** ✅ | 测试套件可运行 + CI 建立 + 仓库卫生 | 1 周 | 无 |
+| **P1-1** ✅ | 配置锚定项目根 + `base_url` 惰性化 | 3-5 天 | P0-1 |
+| **P1-2** ✅ | 请求层合并 + ExtractVar 收尾 | 1 周 | P1-1 |
+| **P1-3** ✅ | web_runner 解耦 + 状态清理 + 收集规则插件化 | 1-2 周 | P1-1 |
+| **P1-4** ✅ | po.py 透传化 + 签名对齐测试 | 1 周 | 无 |
+| **P1-5** ✅ | 执行链 / 用例级 hook 化（thinking #7/#8、steps 步骤 1-2） | 1 周 | P0-1 |
+| **P1-6** ✅ | 数据库资源层收尾（DatabaseFactory + fixture 工厂 + 可选驱动惰性 import） | 1 周 | P1-1 |
+| **P1-7** 🟡 | 官方推荐扩展方式文档（`docs/project_guide.md`）——`docs/plugin_hooks.md` 已成文，完整 `project_guide.md` 未做 | 2-3 天 | P1-5 |
 | **V1.4** | F1-F4（平台化 API / 报告 / runner v2 / 通知含飞书） | 1-2 个月 | P1-1 ~ P1-3 |
 | **V1.5** | F5-F8（AI / 多环境 / 数据驱动 / 编排） | 3-5 个月 | V1.4 |
 | **V2.0** | F9-F12（分布式 / 插件生态 / 资产中心 / IDE 集成） | 6 个月+ | V1.5 |
 
-**建议立即启动的三件事**（性价比最高）：
-1. 测试套件可运行性（P0-1）——让每个 PR 都有可靠的验证基线；
-2. 配置锚定项目根 + `base_url` 惰性化（P1-1）——消除最常见的使用困惑；
-3. 执行链 / 用例级 hook 化（P1-5）——`docs/steps.md` 明确的第二优先级，改动集中在 `case.py` + `plugin_hooks.py`，可独立交付，业务侧从此不用 monkey patch 框架。
-4. 请求层双轨合并（P1-2）——降低后续所有请求相关功能的维护成本。
+**建议立即启动的四件事**（均已落地 ✅）：
+1. 测试套件可运行性（P0-1）——让每个 PR 都有可靠的验证基线；✅ `pytest tests/` 全绿（123 passed / 1 skipped）
+2. 配置锚定项目根 + `base_url` 惰性化（P1-1）——消除最常见的使用困惑；✅ `settings.py` 锚定 + mtime 缓存 + `EnvConfigSource` + 惰性 `base_url` 代理
+3. 执行链 / 用例级 hook 化（P1-5）——`docs/steps.md` 明确的第二优先级，改动集中在 `case.py` + `plugin_hooks.py`，可独立交付，业务侧从此不用 monkey patch 框架；✅ 已落地 + `docs/plugin_hooks.md`
+4. 请求层双轨合并（P1-2）——降低后续所有请求相关功能的维护成本；✅ `HttpRequest` 委托 `RequestClient` + 一致性单测
