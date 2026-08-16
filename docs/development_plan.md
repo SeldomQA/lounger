@@ -98,8 +98,8 @@
 | thinking #7 / steps 步骤1 | 通知 / 后处理 hook 化 | ✅ 主体完成（`plugin_hooks` + `integrations/dingtalk` + `pytest_sessionfinish` 触发 + `after_case_finish` 用例级 hook + `docs/plugin_hooks.md` 使用文档 + 脚手架 `support/notify.py` 示例）；飞书渠道仍属 [F4](#f4-通知渠道扩展) | [3.12](#312-执行链--用例级-hook-化) + 路线图 [F4](#f4-通知渠道扩展) |
 | thinking #8 / steps 步骤2 | 执行链 hook 化（替代 monkey patch） | ✅ 完成（`case.py::execute_step` 三个执行链 hook + `plugin_hooks` 注册机制；`tests/test_execution_hooks.py` 覆盖调用时机/参数） | [3.12](#312-执行链--用例级-hook-化)（新增，steps 第二优先级） |
 | thinking #9 / steps 步骤4 | runner 与内核解耦（service 层） | ✅ 主体完成（`lounger/services/case_discovery.py` + `test_execution.py` 已抽离，web_runner 变薄包装；`web_runner.state` 仍持有运行状态，进一步收敛见 [3.8](#38-web_runner-解耦与健壮性) / [F1](#f1-平台化-api-完善)） | [3.8](#38-web_runner-解耦与健壮性) + 路线图 [F1](#f1-平台化-api-完善) |
-| thinking #10 | 官方推荐扩展方式文档 | 🟡 部分完成（`docs/plugin_hooks.md` 已覆盖扩展点/注册/共存规则；完整 `docs/project_guide.md` 未成文） | [P2 文档](#p2--质量与体验持续)（新增） |
-| thinking #1 / #2 | 三层边界 + 薄 conftest | 🟡 脚手架已拆 `support/db.py` / `support/notify.py`，`tests/conftest.py` 钉钉噪音已清除（随 3.1 套件重构移除）；缺 `docs/project_guide.md` 规范文档 | [3.1](#31-测试套件一键可跑最高优先级) + [P2 文档](#p2--质量与体验持续) |
+| thinking #10 | 官方推荐扩展方式文档 | ✅ 完成（`docs/plugin_hooks.md` 覆盖扩展点/注册/共存规则；`docs/project_guide.md` 覆盖三层边界、conftest 推荐/不推荐清单、settings 统一、模板函数注册、禁 monkey patch） | [P2 文档](#p2--质量与体验持续)（新增） |
+| thinking #1 / #2 | 三层边界 + 薄 conftest | ✅ 完成（脚手架已拆 `support/db.py` / `support/notify.py`，`tests/conftest.py` 钉钉噪音已清除；规范文档见 `docs/project_guide.md`） | [3.1](#31-测试套件一键可跑最高优先级) + [P2 文档](#p2--质量与体验持续) |
 
 **steps.md 中"业务侧旧 `pytest_sessionfinish` 兼容"**：pytest 会执行所有 hookimpl，业务 conftest 自定义的 `pytest_sessionfinish` 与 lounger 插件的天然并存，无需特殊处理（文档中说明即可）。
 
@@ -278,7 +278,7 @@ ai = ["autowing>=0.7.0"]
 - **日志规范**：错误路径统一 `log.error` + 异常链；避免在热路径打印 INFO（如 `cache.get` 每次调用都 INFO）。🟡 `cache.get` 热路径日志已收敛（3.10）；全量审计未做
 - **文档站**：`mkdocs` + `docs/` 现有内容整合（platform.md / steps.md / thinking.md / development_plan.md），补 API 参考（`pydoc-markdown`）。❌
 - **脚手架示例质量**：`project_temp` 与 `myapi`/`myweb` 示例保持一致并附 README 演练。🟡 脚手架已有 hook/通知/DB 示例注释（3.12/3.13），README 演练未做
-- **官方推荐扩展方式文档（thinking #1/#2/#10）**：`docs/plugin_hooks.md` 已成文（3.12，覆盖执行链/用例级扩展点）；完整 `docs/project_guide.md`（业务项目开发指南）未做，明确：
+- **官方推荐扩展方式文档（thinking #1/#2/#10）**：✅ 完成（`docs/plugin_hooks.md` 覆盖执行链/用例级扩展点；`docs/project_guide.md` 业务项目开发指南，明确）：
   - 三层边界（框架内核 / 项目配置层 / 业务扩展层）；
   - `conftest.py` 只允许放三类东西（fixture / pytest hook / 少量 helper 导入注册），并给出"推荐 / 不推荐"清单（直接采用 thinking.md #10 的表述）；
   - 配置统一走 `settings`（不再直接依赖 `config.yaml` 文件结构）；
@@ -421,7 +421,7 @@ jobs:
 | **P1-4** ✅ | po.py 透传化 + 签名对齐测试 | 1 周 | 无 |
 | **P1-5** ✅ | 执行链 / 用例级 hook 化（thinking #7/#8、steps 步骤 1-2） | 1 周 | P0-1 |
 | **P1-6** ✅ | 数据库资源层收尾（DatabaseFactory + fixture 工厂 + 可选驱动惰性 import） | 1 周 | P1-1 |
-| **P1-7** 🟡 | 官方推荐扩展方式文档（`docs/project_guide.md`）——`docs/plugin_hooks.md` 已成文，完整 `project_guide.md` 未做 | 2-3 天 | P1-5 |
+| **P1-7** ✅ | 官方推荐扩展方式文档（`docs/plugin_hooks.md` + `docs/project_guide.md`） | 2-3 天 | P1-5 |
 | **V1.4** | F1-F4（平台化 API / 报告 / runner v2 / 通知含飞书） | 1-2 个月 | P1-1 ~ P1-3 |
 | **V1.5** | F5-F8（AI / 多环境 / 数据驱动 / 编排） | 3-5 个月 | V1.4 |
 | **V2.0** | F9-F12（分布式 / 插件生态 / 资产中心 / IDE 集成） | 6 个月+ | V1.5 |
