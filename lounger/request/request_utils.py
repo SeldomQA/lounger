@@ -11,7 +11,9 @@ import requests
 from pytest_req.plugin import request
 from pytest_req.utils.jmespath import jmespath
 
+from lounger.commons.assert_result import _get_actual_value
 from lounger.log import log
+from lounger.request.request_client import request_client
 
 
 class HttpRequest:
@@ -21,45 +23,54 @@ class HttpRequest:
         self.base_url = base_url
         self.args = args
         self.kwargs = kwargs
+        # 统一走 RequestClient（3.5：请求层双轨合并，base_url/headers/日志统一）
+        self._client = request_client
+
+    def _dispatch(self, method: str, url: str, **kwargs):
+        """
+        Send the request through the shared :class:`RequestClient`.
+
+        The instance ``base_url`` is joined here (same semantics as before);
+        the client's session uses the configured base_url for any remaining
+        relative URL, and headers/logging are unified on this path.
+        """
+        if self.base_url is not None and not str(url).startswith(("http://", "https://")):
+            url = self.base_url + url
+        return self._client.send_request(method=method, url=url, **kwargs)
 
     @request
     def get(self, url, params=None, **kwargs):
-        if self.base_url is not None:
-            url = self.base_url + url
-        return requests.get(url, params=params, **kwargs)
+        return self._dispatch("GET", url, params=params, **kwargs)
 
     @request
     def post(self, url, data=None, json=None, **kwargs):
-        if self.base_url is not None:
-            url = self.base_url + url
-        return requests.post(url, data=data, json=json, **kwargs)
+        return self._dispatch("POST", url, data=data, json=json, **kwargs)
 
     @request
     def put(self, url, data=None, **kwargs):
-        if self.base_url is not None:
-            url = self.base_url + url
-        return requests.put(url, data=data, **kwargs)
+        return self._dispatch("PUT", url, data=data, **kwargs)
 
     @request
     def delete(self, url, **kwargs):
-        if self.base_url is not None:
-            url = self.base_url + url
-        return requests.delete(url, **kwargs)
+        return self._dispatch("DELETE", url, **kwargs)
 
     @request
     def patch(self, url, data=None, **kwargs):
-        if self.base_url is not None:
-            url = self.base_url + url
-        return requests.patch(url, data=data, **kwargs)
+        return self._dispatch("PATCH", url, data=data, **kwargs)
 
 
 def api(describe: str = "", status_code: int = None, ret: str = None, check: dict = None, debug: bool = False):
     """
-    checkout api response data
+    Check API response data.
+
+    Assertions/extraction are delegated to ``lounger.commons.assert_result``,
+    so the expressions support the same syntax as YAML cases: ``status_code``,
+    ``headers.<key>``, ``body.<jmespath>`` or a bare JMESPath expression.
+
     :param describe: interface describe
     :param status_code: http status code
-    :param ret: return data
-    :param check: check data
+    :param ret: return data (JMESPath expression)
+    :param check: check data, e.g. ``{"body.code": 0}``
     :param debug: debug Ture/False
     :return:
     """
@@ -90,14 +101,21 @@ def api(describe: str = "", status_code: int = None, ret: str = None, check: dic
 
             if check:
                 for expr, value in check.items():
-                    data = jmespath(response_data, expr)
-                    if data != value:
+                    try:
+                        actual = _get_actual_value(r, expr)
+                    except (ValueError, json.JSONDecodeError):
+                        # Non-JSON response: fall back to the parsed body (may be {})
+                        actual = jmespath(response_data, expr)
+                    if actual != value:
                         log.error(f"Execute {func_name} - check data failed：{expr} = {value}")
-                        log.error(f"Execute {func_name} - response：{r.json()}")
-                        raise ValueError(f"{data} != {value}")
+                        log.error(f"Execute {func_name} - response：{response_data}")
+                        raise ValueError(f"{actual} != {value}")
 
             if ret:
-                data = jmespath(response_data, ret)
+                try:
+                    data = _get_actual_value(r, ret)
+                except (ValueError, json.JSONDecodeError):
+                    data = jmespath(response_data, ret)
                 if debug is True:
                     log.debug(f"Execute {func_name} - extract: {ret} - {data}")
                 return data

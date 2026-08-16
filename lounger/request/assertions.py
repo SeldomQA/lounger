@@ -90,5 +90,19 @@ class Expect(PytestReqExpect):
 def expect(response: Any) -> Expect:
     """
     Lounger expect entrypoint.
+
+    Unified assertion entry for code-style API objects (``HttpRequest`` +
+    ``@api``), mirroring the YAML-case assertions (``assert_result``).
+
+    Example::
+
+        from lounger.request import expect
+
+        def test_ok():
+            resp = get("https://example.com/api")   # requests.Response or dict
+            expect(resp).to_have_path_value("code", 0)
+            expect(resp).to_have_path_be_dict("data")
+            expect(resp).to_have_path_length("data.items", 2)
+            expect(resp).to_have_path_type("data.name", str)
     """
     return Expect(response)
