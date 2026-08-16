@@ -109,14 +109,8 @@ def pytest_runtest_makereport(item):
     report.description = str(item.function.__doc__)
     extra = getattr(report, 'extra', [])
     if report.when == 'call':
-        xfail = hasattr(report, 'wasxfail')
-        if (report.skipped and xfail) or (report.failed and not xfail):
-            page = item.funcargs.get('page')
-            if page is not None:
-                # add screenshot to HTML report.
-                image = screenshot_base64(page)
-                if pytest_html:
-                    extra.append(pytest_html.extras.image(image, mime_type='image/png'))
+        # add screenshot to HTML report (failure / xfail only)
+        _attach_failure_screenshot(item, report, pytest_html, extra)
 
         # Empty memory stream
         LOG_STREAM.truncate(0)
@@ -129,6 +123,34 @@ def pytest_runtest_makereport(item):
         _trigger_after_case_finish(item, report)
 
     report.extras = extra
+
+
+def _attach_failure_screenshot(item, report, pytest_html, extra: list) -> bool:
+    """
+    Attach a page screenshot to the HTML report for failed (or xfailed) cases.
+
+    Extracted from ``pytest_runtest_makereport`` so it can be unit-tested
+    without a real browser (stub :func:`screenshot_base64` / fake ``page``).
+
+    :param item: The pytest test item (must expose ``funcargs``).
+    :param report: The ``TestReport`` whose ``when == "call"``.
+    :param pytest_html: The pytest-html plugin instance (or ``None``).
+    :param extra: The report's ``extra`` list, mutated in place.
+    :return: True if a screenshot was attached.
+    """
+    xfail = hasattr(report, 'wasxfail')
+    if not ((report.skipped and xfail) or (report.failed and not xfail)):
+        return False
+
+    page = item.funcargs.get('page')
+    if page is None:
+        return False
+
+    image = screenshot_base64(page)
+    if pytest_html is not None:
+        extra.append(pytest_html.extras.image(image, mime_type='image/png'))
+        return True
+    return False
 
 
 def _trigger_after_case_finish(item, report) -> None:
@@ -174,13 +196,13 @@ def pytest_addoption(parser: Any) -> None:
     group.addoption(
         "--html-title",
         action="store",
-        default=[],
+        default=None,
         help="Specifies the title of the pytest-xhtml test report",
     ),
     group.addoption(
         "--env",
         action="store",
-        default=[],
+        default=None,
         help="only run tests matching the environment {name}.",
     )
     group.addoption(
