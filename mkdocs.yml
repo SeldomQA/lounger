@@ -1,0 +1,24 @@
+# Lounger documentation site (docs/development_plan.md P2)
+# Preview: mkdocs serve
+# Build:   mkdocs build
+site_name: Lounger
+site_description: Next generation automated testing framework.
+repo_url: https://github.com/SeldomQA/lounger
+
+theme:
+  name: readthedocs
+  language: zh
+
+nav:
+  - 首页: index.md
+  - 业务项目指南: project_guide.md
+  - 扩展点 (plugin_hooks): plugin_hooks.md
+  - 平台执行协议 (run-json): run_json.md
+  - 平台化执行: platform.md
+  - 开发计划: development_plan.md
+
+markdown_extensions:
+  - admonition
+  - codehilite
+  - toc:
+      permalink: true

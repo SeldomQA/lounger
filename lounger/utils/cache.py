@@ -158,13 +158,15 @@ class Cache:
                     for key, entry in save_data.items()
                     if cls._unwrap(entry) is not None
                 }
-                log.info(f"💾 Get all cache data: {view}")
+                log.debug(f"💾 Get all cache data: {view}")
                 return view
 
             key = cls._key(name, namespace)
             value = cls._unwrap(save_data.get(key))
             if value is not None:
-                log.info(f"💾 Get cache data: {name} = {value}")
+                # DEBUG: get() is a hot path (e.g. default_headers per request);
+                # avoid INFO noise (docs/development_plan.md P2 logging)
+                log.debug(f"💾 Get cache data: {name} = {value}")
             return value
 
 

@@ -275,9 +275,9 @@ ai = ["autowing>=0.7.0"]
 
 - **类型标注**：核心模块（settings / plugin_hooks / request / commons）已部分标注，扩展到全量；`mypy --strict` 或 `pyright` 进 pre-commit。🟡 部分
 - **代码风格**：✅ 完成（`[tool.ruff]` + `[tool.black]`（line-length 120）已进 `pyproject.toml`；`.pre-commit-config.yaml` 已建：ruff check --fix + ruff-format + black + mypy；ruff 已进 CI）
-- **日志规范**：错误路径统一 `log.error` + 异常链；避免在热路径打印 INFO（如 `cache.get` 每次调用都 INFO）。🟡 `cache.get` 热路径日志已收敛（3.10）；全量审计未做
-- **文档站**：`mkdocs` + `docs/` 现有内容整合（platform.md / steps.md / thinking.md / development_plan.md），补 API 参考（`pydoc-markdown`）。❌
-- **脚手架示例质量**：`project_temp` 与 `myapi`/`myweb` 示例保持一致并附 README 演练。🟡 脚手架已有 hook/通知/DB 示例注释（3.12/3.13），README 演练未做
+- **日志规范**：✅ 完成（错误路径统一 `log.error` + 异常链已审计；`cache.get` / `cache.get()` 热路径 INFO 降为 DEBUG——每请求 `default_headers` 不再刷屏；`settings` 热路径静默）
+- **文档站**：✅ 完成（`mkdocs.yml` + `docs/index.md` 入口，整合 project_guide / plugin_hooks / run_json / platform / development_plan；`mkdocs build` 验证通过；API 参考（`pydoc-markdown`）后续接入）
+- **脚手架示例质量**：✅ 完成（`project_temp/api/README.md` 演练：安装→配置→运行→扩展；`project_temp/web/README.md` 已有；与 `myapi`/`myweb` 示例同构）
 - **官方推荐扩展方式文档（thinking #1/#2/#10）**：✅ 完成（`docs/plugin_hooks.md` 覆盖执行链/用例级扩展点；`docs/project_guide.md` 业务项目开发指南，明确）：
   - 三层边界（框架内核 / 项目配置层 / 业务扩展层）；
   - `conftest.py` 只允许放三类东西（fixture / pytest hook / 少量 helper 导入注册），并给出"推荐 / 不推荐"清单（直接采用 thinking.md #10 的表述）；
