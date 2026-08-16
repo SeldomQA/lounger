@@ -274,7 +274,7 @@ ai = ["autowing>=0.7.0"]
 ### P2 — 质量与体验（持续）
 
 - **类型标注**：核心模块（settings / plugin_hooks / request / commons）已部分标注，扩展到全量；`mypy --strict` 或 `pyright` 进 pre-commit。🟡 部分
-- **代码风格**：`ruff` + `black` 配置进 `pyproject.toml`，`pre-commit` 钩子。🟡 `[tool.ruff]` 已配置并进 CI；`black` / `pre-commit` 未做
+- **代码风格**：✅ 完成（`[tool.ruff]` + `[tool.black]`（line-length 120）已进 `pyproject.toml`；`.pre-commit-config.yaml` 已建：ruff check --fix + ruff-format + black + mypy；ruff 已进 CI）
 - **日志规范**：错误路径统一 `log.error` + 异常链；避免在热路径打印 INFO（如 `cache.get` 每次调用都 INFO）。🟡 `cache.get` 热路径日志已收敛（3.10）；全量审计未做
 - **文档站**：`mkdocs` + `docs/` 现有内容整合（platform.md / steps.md / thinking.md / development_plan.md），补 API 参考（`pydoc-markdown`）。❌
 - **脚手架示例质量**：`project_temp` 与 `myapi`/`myweb` 示例保持一致并附 README 演练。🟡 脚手架已有 hook/通知/DB 示例注释（3.12/3.13），README 演练未做

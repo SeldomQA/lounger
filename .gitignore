@@ -162,3 +162,9 @@ cython_debug/
 
 .idea/
 assets/
+# Lounger runtime artifacts (3.3 repo hygiene)
+collected_cases/
+lounger/utils/cache_data.json
+tests/data/*.sqlite3
+reports/
+/*.csv            # root-level personal data files
