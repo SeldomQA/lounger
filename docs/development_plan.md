@@ -92,14 +92,14 @@
 | 来源 | 条目 | 现状 | 跟踪位置 |
 |---|---|---|---|
 | thinking #3 / steps | 统一 settings 入口 | ✅ 完成（`lounger/settings.py`：Yaml/Dict source、`get/get_int/get_bool`） | — |
-| thinking #4 / steps | ExtractVar 注册范围收窄 | 🟡 显式注册表 `LOUNGER_TEMPLATE_FUNCTIONS` + 仅本模块函数已做；`lounger.runtime.register_template_func` API、自动扫描弃用警告未做 | [3.6](#36-extractvar-注册机制收尾) |
-| thinking #5 / steps | MySQL 资源层 | 🟡 `MySQLResource` / `SSHTunnelConfig` / `build_mysql_resource` 已做；`DatabaseFactory` 统一工厂、`create_mysql_fixture()` fixture 工厂未做 | [3.13](#313-数据库资源层收尾databasefactory--fixture-工厂)（新增） |
-| thinking #6 / steps 步骤3 | 请求层双轨合并 | ❌ `RequestClient` 与 `HttpRequest + @api` 仍并行 | [3.5](#35-请求层双轨合并对齐-docsthinkingmd-第-6-条) |
-| thinking #7 / steps 步骤1 | 通知 / 后处理 hook 化 | 🟡 主体完成（`plugin_hooks` + `integrations/dingtalk` + `pytest_sessionfinish` 触发 + 脚手架 `support/notify.py` 薄示例）；`after_case_finish` 用例级 hook、飞书落地、使用文档缺失 | [3.12](#312-执行链--用例级-hook-化) + 路线图 [F4](#f4-通知渠道扩展) |
-| thinking #8 / steps 步骤2 | 执行链 hook 化（替代 monkey patch） | ❌ `case.py` 无任何 hook（`before_execute_step` / `after_execute_step` / `on_execute_step_error`） | [3.12](#312-执行链--用例级-hook-化)（新增，steps 第二优先级） |
+| thinking #4 / steps | ExtractVar 注册范围收窄 | ✅ 完成（`lounger/runtime.py` `register_template_func` + `LOUNGER_TEMPLATE_FUNCTIONS` 显式注册表；自动扫描降级 fallback 并打 DeprecationWarning；`tests/test_extract_var_registry.py` 覆盖） | [3.6](#36-extractvar-注册机制收尾) |
+| thinking #5 / steps | MySQL 资源层 | ✅ 完成（`DatabaseFactory.mysql/postgres/mssql` + `create_mysql_fixture` 等 4 个 fixture 工厂；可选驱动惰性 import；`tests/test_db_factory.py` 覆盖） | [3.13](#313-数据库资源层收尾databasefactory--fixture-工厂)（新增） |
+| thinking #6 / steps 步骤3 | 请求层双轨合并 | ✅ 完成（`HttpRequest` 委托 `RequestClient`；`@api` check/ret 复用 `assert_result`；`tests/test_request_merge.py` 覆盖两种写法一致性） | [3.5](#35-请求层双轨合并对齐-docsthinkingmd-第-6-条) |
+| thinking #7 / steps 步骤1 | 通知 / 后处理 hook 化 | ✅ 主体完成（`plugin_hooks` + `integrations/dingtalk` + `pytest_sessionfinish` 触发 + `after_case_finish` 用例级 hook + `docs/plugin_hooks.md` 使用文档 + 脚手架 `support/notify.py` 示例）；飞书渠道仍属 [F4](#f4-通知渠道扩展) | [3.12](#312-执行链--用例级-hook-化) + 路线图 [F4](#f4-通知渠道扩展) |
+| thinking #8 / steps 步骤2 | 执行链 hook 化（替代 monkey patch） | ✅ 完成（`case.py::execute_step` 三个执行链 hook + `plugin_hooks` 注册机制；`tests/test_execution_hooks.py` 覆盖调用时机/参数） | [3.12](#312-执行链--用例级-hook-化)（新增，steps 第二优先级） |
 | thinking #9 / steps 步骤4 | runner 与内核解耦（service 层） | ❌ 无 `lounger.services`，收集/执行/状态仍耦在 `web_runner` 目录 | [3.8](#38-web_runner-解耦与健壮性) + 路线图 [F1](#f1-平台化-api-完善) |
-| thinking #10 | 官方推荐扩展方式文档 | ❌ 未成文（脚手架注释示例已示范，缺正式文档） | [P2 文档](#p2--质量与体验持续)（新增） |
-| thinking #1 / #2 | 三层边界 + 薄 conftest | 🟡 脚手架已拆 `support/db.py` / `support/notify.py`；框架自带 `tests/conftest.py` 仍堆钉钉逻辑，且缺规范文档 | [3.1](#31-测试套件一键可跑最高优先级) + [P2 文档](#p2--质量与体验持续) |
+| thinking #10 | 官方推荐扩展方式文档 | 🟡 部分完成（`docs/plugin_hooks.md` 已覆盖扩展点/注册/共存规则；完整 `docs/project_guide.md` 未成文） | [P2 文档](#p2--质量与体验持续)（新增） |
+| thinking #1 / #2 | 三层边界 + 薄 conftest | 🟡 脚手架已拆 `support/db.py` / `support/notify.py`，`tests/conftest.py` 钉钉噪音已清除（随 3.1 套件重构移除）；缺 `docs/project_guide.md` 规范文档 | [3.1](#31-测试套件一键可跑最高优先级) + [P2 文档](#p2--质量与体验持续) |
 
 **steps.md 中"业务侧旧 `pytest_sessionfinish` 兼容"**：pytest 会执行所有 hookimpl，业务 conftest 自定义的 `pytest_sessionfinish` 与 lounger 插件的天然并存，无需特殊处理（文档中说明即可）。
 
