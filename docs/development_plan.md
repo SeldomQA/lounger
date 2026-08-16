@@ -273,7 +273,7 @@ ai = ["autowing>=0.7.0"]
 
 ### P2 — 质量与体验（持续）
 
-- **类型标注**：核心模块（settings / plugin_hooks / request / commons）已部分标注，扩展到全量；`mypy --strict` 或 `pyright` 进 pre-commit。🟡 部分
+- **类型标注**：✅ 完成（全量模块通过 `mypy --ignore-missing-imports`（80 文件 Success）；`[tool.mypy]` 进 `pyproject.toml`，mypy 进 CI 与 pre-commit；`po.py` 因依赖 playwright 私有 `_impl` 类型经 overrides 跳过）
 - **代码风格**：✅ 完成（`[tool.ruff]` + `[tool.black]`（line-length 120）已进 `pyproject.toml`；`.pre-commit-config.yaml` 已建：ruff check --fix + ruff-format + black + mypy；ruff 已进 CI）
 - **日志规范**：✅ 完成（错误路径统一 `log.error` + 异常链已审计；`cache.get` / `cache.get()` 热路径 INFO 降为 DEBUG——每请求 `default_headers` 不再刷屏；`settings` 热路径静默）
 - **文档站**：✅ 完成（`mkdocs.yml` + `docs/index.md` 入口，整合 project_guide / plugin_hooks / run_json / platform / development_plan；`mkdocs build` 验证通过；API 参考（`pydoc-markdown`）后续接入）
