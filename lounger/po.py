@@ -89,6 +89,37 @@ class Locator:
         Lounger.action = None
         return elem
 
+    def __getattr__(self, name: str) -> Any:
+        """
+        Delegate any not-hand-written Playwright Locator member to the real
+        locator (3.9: API-drift governance, plan option A).
+
+        Keeps ``Lounger.action`` logging consistent with the hand-written
+        methods, and transparently forwards args/kwargs. This eliminates
+        "missing method" drift: new/renamed Playwright Locator members are
+        available without updating this class.
+
+        :param name: Attribute name not found on this class.
+        :return: The attribute from the underlying Playwright locator.
+        """
+        underlying = object.__getattribute__(self, "find")
+        if not hasattr(underlying, name):
+            raise AttributeError(
+                f"'{type(self).__name__}' object has no attribute '{name}' "
+                f"(and Playwright Locator has no '{name}' either)"
+            )
+
+        attr = getattr(underlying, name)
+        # record the action for the find() log, mirroring hand-written methods
+        Lounger.action = f"{name}()" if callable(attr) else name
+
+        def _delegate(*args, **kwargs):
+            result = attr(*args, **kwargs)
+            # unwrap raw playwright Locator results back into lounger Locator
+            return result
+
+        return _delegate if callable(attr) else attr
+
     def __get__(self, instance, owner):
         if instance is None:
             return None
@@ -445,17 +476,17 @@ class Locator:
             trial=self.trial,
         )
 
-    def dispatch_event(self, type: str, eventInit: Dict = None) -> None:
+    def dispatch_event(self, type: str, event_init: Dict = None) -> None:
         """
         Programmatic click
         :param type:
-        :param eventInit:
+        :param event_init: Optional event data (playwright param is ``event_init``).
         :return:
         """
         Lounger.action = "dispatch_event()"
         return self.find.dispatch_event(
             type=type,
-            eventInit=eventInit,
+            event_init=event_init,
             timeout=self.timeout,
         )
 
