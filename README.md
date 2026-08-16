@@ -101,7 +101,7 @@ cd myapi
 pytest
 ```
 
-![](./images/result_0.4.0.png)
+![](./images/result_0.5.0.png)
 
 ## 🧪 web运行器
 
