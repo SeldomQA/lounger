@@ -123,7 +123,7 @@ class RequestClient:
                 kwargs["files"], opened_files = self._files_load(kwargs["files"])
 
             # Add content type for JSON requests
-            if "json" in kwargs:
+            if kwargs.get("json") is not None:
                 kwargs['headers'].setdefault('Content-Type', 'application/json')
 
             # Use image only if data is not provided and image path exists
@@ -134,7 +134,7 @@ class RequestClient:
                 del kwargs['image']
 
             # Support GraphQL parameters
-            if "json" in kwargs:
+            if kwargs.get("json") is not None:
                 request_json = kwargs['json']
 
                 if "query_path" in request_json:
