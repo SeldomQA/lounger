@@ -1,6 +1,7 @@
 import inspect
 import json
 import os
+import sys
 import time
 import types
 from datetime import datetime, timezone
@@ -44,9 +45,31 @@ def setup_log():
     """
     setup log
     """
-    # setting log format
     log_format = "<green>{time:YYYY-MM-DD HH:mm:ss}</> |<level> {level} | {message}</level>"
-    log_cfg.set_level(format=log_format)
+    _configure_logging(log_format)
+
+
+def _configure_logging(log_format: str) -> None:
+    """
+    Configure the loguru console handler, bound to the real interpreter stderr.
+
+    pytest_req's ``log_cfg.set_level`` binds the console handler to the
+    *current* ``sys.stderr`` object. pytest replaces ``sys.stderr`` with its
+    capture streams — and nested pytester sessions replace it again — and those
+    streams are closed when capture ends, leaving loguru writing to a closed
+    file ("I/O operation on closed file"). Binding to ``sys.__stderr__`` (the
+    real interpreter stderr, never replaced or closed) keeps logging working
+    in every environment.
+
+    :param log_format: loguru format string for the console handler.
+    """
+    real_stderr = sys.__stderr__
+    saved_stderr = sys.stderr
+    sys.stderr = real_stderr
+    try:
+        log_cfg.set_level(format=log_format)
+    finally:
+        sys.stderr = saved_stderr
 
 
 @pytest.hookimpl(tryfirst=True)
@@ -106,7 +129,9 @@ def pytest_runtest_makereport(item):
     outcome = yield
     pytest_html = item.config.pluginmanager.getplugin('html')
     report = outcome.get_result()
-    report.description = str(item.function.__doc__)
+    # `item.function` may be missing on exotic item types; guard so a single
+    # attribute access can never fail the whole test run.
+    report.description = str(getattr(item.function, "__doc__", "") or "")
     extra = getattr(report, 'extra', [])
     if report.when == 'call':
         # add screenshot to HTML report (failure / xfail only)
@@ -186,7 +211,6 @@ def _trigger_after_case_finish(item, report) -> None:
         description=str(getattr(item.function, "__doc__", "") or ""),
     )
     run_after_case_finish(result)
-
 
 def pytest_addoption(parser: Any) -> None:
     """
