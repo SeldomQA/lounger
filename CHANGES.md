@@ -1,3 +1,20 @@
+## 1.5.1(2026-08-19)
+
+本版本主要**修复 CI 兼容性问题**（pytest-playwright 0.8.0、loguru 日志），并更正一项历史设计决策（`ConfigUtils` 保留为公开 API，不废弃）。
+
+### 修复 Bug
+
+* 修复：pytest-playwright `>=0.8.0` 与内层 pytest 会话冲突。
+* 修复：loguru 日志报 `I/O operation on closed file`。
+* 修复：`webhook.py` mypy 构建错误（`json` 参数与 `JsonType` 类型不兼容）——抽出 `_text_payload` / `_markdown_payload`，显式 `dict[str, Any]` 返回类型。
+* 修复：`request_client.py` 在 `json=None` 时误加 `Content-Type`、误进 GraphQL 分支——改为 `kwargs.get("json") is not None` 判断。
+
+### 变更与更正
+
+* `ConfigUtils` 保留为公开 API，**不废弃**（更正此前"淘汰 ConfigUtils"的历史决策）。
+* `HttpRequest` 收敛到 `RequestClient`：去除对 `pytest_req` 的 `request` 装饰器依赖，内部统一走 `RequestClient.
+* `config_utils.py` 增强：多文件分层加载 + 深合并（URL 简写、同名字段覆盖）+ mtime 文件缓存。
+
 ## 1.5.0(2026-08-16)
 
 本版本为一次**修复 bug + 重构优化 + 更正历史设计错误**的发布，同时补齐 P0/P1/P2 开发计划（详见 `docs/development_plan.md`）。
