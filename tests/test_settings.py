@@ -192,8 +192,12 @@ def test_base_url_lazy_proxy_reflects_config_edit(tmp_path, monkeypatch):
 # ── ConfigUtils deprecation ───────────────────────────────────────────────
 
 def test_config_utils_is_deprecated(tmp_path):
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "config.yaml").write_text("base_url: https://example.com\n", encoding="utf-8")
+
     with pytest.warns(DeprecationWarning, match="deprecated"):
-        ConfigUtils(str(tmp_path / "config" / "config.yaml"))
+        ConfigUtils(str(config_dir / "config.yaml"))
 
 
 # ── source override helpers still work ────────────────────────────────────

@@ -11,6 +11,7 @@ Covers:
   function and bound method) produces the expected docstring.
 """
 import json
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -18,6 +19,46 @@ import pytest
 from lounger import plugin
 
 pytest_plugins = ["pytester"]
+
+# ── log console handler stability ─────────────────────────────────────────
+
+def test_console_log_handler_bound_to_real_stderr():
+    """Logging must survive pytest replacing/closing sys.stderr (per-session
+    capture, nested pytester sessions).
+
+    ``setup_log`` binds the loguru console handler to ``sys.__stderr__`` (the
+    real interpreter stderr, never closed) instead of the captured
+    ``sys.stderr`` — otherwise loguru writes to a closed stream and every
+    later log call emits "I/O operation on closed file".
+    """
+    import io
+
+    from loguru import logger
+
+    fake_stderr = io.StringIO()
+    saved = sys.stderr
+    sys.stderr = fake_stderr  # simulate pytest capture replacing stderr
+    try:
+        plugin._configure_logging("<level>{message}</level>")
+    finally:
+        sys.stderr = saved
+
+    # loguru internals (loguru 0.7.x): Handler._sink is a StreamSink holding
+    # the stream the console handler writes to.
+    streams = []
+    for handler in logger._core.handlers.values():
+        sink = getattr(handler, "_sink", None)
+        stream = getattr(sink, "_stream", None)
+        if stream is not None:
+            streams.append(stream)
+
+    assert streams, "no console handler found"
+    assert any(s is sys.__stderr__ for s in streams), (
+        f"console handler not bound to real stderr: {streams!r}"
+    )
+    assert not any(s is fake_stderr for s in streams), (
+        f"console handler bound to pytest-captured stderr: {streams!r}"
+    )
 
 # ── option defaults ───────────────────────────────────────────────────────
 
@@ -243,6 +284,15 @@ def test_collection_skips_non_function_callables():
 
 def test_run_json_end_to_end_reorders_execution(pytester):
     """A real pytest run executes tests in the order given by --run-json."""
+    # Isolate from state left by earlier tests in this process: the lounger
+    # plugin keeps per-item timing/finish sets and a hook registry that must
+    # not leak into the inner pytest session (pytester runs in-process).
+    from lounger.plugin_hooks import reset_hooks
+
+    plugin._item_start_times.clear()
+    plugin._item_finished.clear()
+    reset_hooks()
+
     pytester.makepyfile(
         test_order="""
         ORDER = []
