@@ -327,8 +327,14 @@ def test_run_json_end_to_end_reorders_execution(pytester):
         encoding="utf-8",
     )
 
-    # run the whole file; --run-json reorders execution per the JSON
-    result = pytester.runpytest(f"--run-json={run_json}")
+    # Run the whole file in a SUBPROCESS: --run-json reorders execution per
+    # the JSON. A subprocess is required because pytest-playwright >= 0.8
+    # wraps every test in a module-global soft-assertion scope; running a
+    # nested pytest session in-process (pytester.runpytest) would re-enter
+    # that scope and fail every inner test with "nested soft assertion scopes
+    # are not supported". Subprocess isolation also shields the inner run from
+    # any other plugin state left by the outer process.
+    result = pytester.runpytest_subprocess(f"--run-json={run_json}")
 
     result.assert_outcomes(passed=3)
     order_file = pytester.path / "order.json"
