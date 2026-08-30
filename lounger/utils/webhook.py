@@ -3,11 +3,33 @@ import hashlib
 import hmac
 import time
 import urllib.parse
+from typing import Any
 
 import requests
 
 from lounger.log import log
 from lounger.plugin_hooks import TestRunSummary
+
+
+def _text_payload(content: str) -> dict[str, Any]:
+    """Build a DingTalk text message payload (dict[str, Any] keeps mypy happy)."""
+    return {
+        "msgtype": "text",
+        "text": {
+            "content": content,
+        },
+    }
+
+
+def _markdown_payload(title: str, text: str) -> dict[str, Any]:
+    """Build a DingTalk markdown message payload."""
+    return {
+        "msgtype": "markdown",
+        "markdown": {
+            "title": title,
+            "text": text,
+        },
+    }
 
 
 class DingDingWebhook:
@@ -72,12 +94,7 @@ class DingDingWebhook:
             f"Note: Success Rate = (Passed + Skipped) / Total"
         )
 
-        payload = {
-            "msgtype": "text",
-            "text": {
-                "content": content
-            }
-        }
+        payload = _text_payload(content)
 
         try:
             response = requests.post(self._get_signed_webhook_url(), json=payload, timeout=10)
@@ -114,12 +131,7 @@ class DingDingWebhook:
         if report_path:
             content += f"\n📄 Report: {report_path}"
 
-        payload = {
-            "msgtype": "text",
-            "text": {
-                "content": content
-            }
-        }
+        payload = _text_payload(content)
 
         try:
             response = requests.post(self._get_signed_webhook_url(), json=payload, timeout=10)
@@ -135,13 +147,7 @@ class DingDingWebhook:
         :param title: Message title.
         :param text: Markdown-formatted message content.
         """
-        data = {
-            "msgtype": "markdown",
-            "markdown": {
-                "title": title,
-                "text": text,
-            },
-        }
+        data = _markdown_payload(title, text)
 
         try:
             signed_url = self._get_signed_webhook_url()

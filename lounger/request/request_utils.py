@@ -9,7 +9,6 @@ from functools import wraps
 from typing import Any
 
 import requests
-from pytest_req.plugin import request
 from pytest_req.utils.jmespath import jmespath
 
 from lounger.commons.assert_result import _get_actual_value
@@ -39,23 +38,18 @@ class HttpRequest:
             url = self.base_url + url
         return self._client.send_request(method=method, url=url, **kwargs)
 
-    @request
     def get(self, url, params=None, **kwargs):
         return self._dispatch("GET", url, params=params, **kwargs)
 
-    @request
     def post(self, url, data=None, json=None, **kwargs):
         return self._dispatch("POST", url, data=data, json=json, **kwargs)
 
-    @request
     def put(self, url, data=None, **kwargs):
         return self._dispatch("PUT", url, data=data, **kwargs)
 
-    @request
     def delete(self, url, **kwargs):
         return self._dispatch("DELETE", url, **kwargs)
 
-    @request
     def patch(self, url, data=None, **kwargs):
         return self._dispatch("PATCH", url, data=data, **kwargs)
 

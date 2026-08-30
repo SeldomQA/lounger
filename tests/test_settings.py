@@ -1,6 +1,6 @@
 """
 Tests for settings anchoring (3.4), lazy base_url, EnvConfigSource and
-ConfigUtils deprecation.
+ConfigUtils (low-level layered config loading).
 
 Covers the acceptance points of docs/development_plan.md §3.4:
 
@@ -8,7 +8,8 @@ Covers the acceptance points of docs/development_plan.md §3.4:
   the CWD, so settings survive a change of working directory;
 - lazy ``base_url``: editing the config file is picked up without restarting;
 - ``EnvConfigSource``: ``LOUNGER_*`` environment variables override YAML;
-- ``ConfigUtils`` deprecation warning.
+- ``ConfigUtils``: multi-file layered loading / deep merge / node access
+  (kept as a public low-level API).
 """
 
 import pytest
@@ -189,11 +190,78 @@ def test_base_url_lazy_proxy_reflects_config_edit(tmp_path, monkeypatch):
     assert base_url() == "https://edited.example.com"
 
 
-# ── ConfigUtils deprecation ───────────────────────────────────────────────
+# ── ConfigUtils (public low-level config-file API) ────────────────────────
 
-def test_config_utils_is_deprecated(tmp_path):
-    with pytest.warns(DeprecationWarning, match="deprecated"):
-        ConfigUtils(str(tmp_path / "config" / "config.yaml"))
+def test_config_utils_single_file_node_and_key_access(tmp_path):
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "config.yaml").write_text(
+        "\n".join(
+            [
+                "base_url: https://example.com",
+                "bff_develop:",
+                "  api_key: abc",
+                "  timeout: 30",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    config = ConfigUtils(str(config_dir / "config.yaml"))
+
+    assert config.is_exists() is True
+    assert config.get_config("base_url") == "https://example.com"
+    assert config.get_config("bff_develop") == {"api_key": "abc", "timeout": 30}
+    assert config.get_config("bff_develop", "api_key") == "abc"
+
+
+def test_config_utils_layered_merge_overrides_same_keys(tmp_path):
+    """Later files override same-named keys (node-level deep merge)."""
+    base = tmp_path / "base.yaml"
+    base.write_text(
+        "app:\n  name: lounger\n  port: 5000\nkeep: original\n",
+        encoding="utf-8",
+    )
+    local = tmp_path / "local.yaml"
+    local.write_text("app:\n  port: 5001\n", encoding="utf-8")
+
+    config = ConfigUtils(str(base), str(local))
+
+    # deep merge: 'port' overridden, 'name' kept from base
+    assert config.get_config("app") == {"name": "lounger", "port": 5001}
+    assert config.get_config("keep") == "original"
+
+
+def test_config_utils_url_shorthand_merge(tmp_path):
+    """A plain string in base + dict override => {"base_url": <string>, **override}."""
+    base = tmp_path / "base.yaml"
+    base.write_text("env: https://api.example.com\n", encoding="utf-8")
+    local = tmp_path / "local.yaml"
+    local.write_text("env:\n  auth: token123\n", encoding="utf-8")
+
+    config = ConfigUtils(str(base), str(local))
+
+    assert config.get_config("env") == {
+        "base_url": "https://api.example.com",
+        "auth": "token123",
+    }
+
+
+def test_config_utils_missing_node_raises_key_error(tmp_path):
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("app:\n  port: 5000\n", encoding="utf-8")
+
+    config = ConfigUtils(str(config_file))
+
+    with pytest.raises(KeyError):
+        config.get_config("missing_node")
+    with pytest.raises(KeyError):
+        config.get_config("app", "missing_key")
+
+
+def test_config_utils_missing_file_raises(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        ConfigUtils(str(tmp_path / "nope.yaml"))
 
 
 # ── source override helpers still work ────────────────────────────────────
