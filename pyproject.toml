@@ -40,7 +40,7 @@ db-mysql = ["PyMySQL>=1.1.1,<2.0.0"]
 db-mssql = ["pymssql>=2.2"]
 db-postgres = ["psycopg2-binary>=2.9"]
 db-ssh = ["fabric>=3.2.2,<4.0.0"]
-ai = ["autowing>=0.7.0,<0.8.0"]
+ai = ["autowing>=0.8.1,<0.9.0"]
 
 [project.urls]
 repository = "https://github.com/SeldomQA/lounger"
