@@ -16,6 +16,20 @@ _scan_dir: str = "."
 _active_runs: dict = {}
 _runs_lock = threading.Lock()
 
+
+def active_run_count() -> int:
+    """Return the number of currently running test runs."""
+    with _runs_lock:
+        return sum(
+            1 for info in _active_runs.values()
+            if info.get("status") == "running"
+        )
+
+
+def is_any_run_active() -> bool:
+    """Return True if any test run is currently executing."""
+    return active_run_count() > 0
+
 # Case cache
 _cases_cache: list[dict] | None = None
 _cases_cache_time: float = 0.0
