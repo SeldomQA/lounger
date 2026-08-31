@@ -117,7 +117,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .history-item .h-id { font-weight: 500; font-size: 13px; }
 .history-item .h-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
 .history-item .h-actions { display: flex; gap: 6px; }
-.history-detail { padding: 0; flex: 1; overflow: hidden; flex-direction: column; }
+.history-detail { padding: 0; flex: 1; overflow: hidden; display: flex; flex-direction: column; }
 .history-detail-header { padding: 12px 20px; border-bottom: 1px solid var(--border);
   display: flex; align-items: center; gap: 12px; }
 /* ── log ── */
@@ -131,6 +131,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .log-line.summary { color: var(--accent); font-weight: bold; }
 .log-placeholder { color: var(--muted); text-align: center; padding: 60px 20px; }
 .log-placeholder .icon { font-size: 48px; margin-bottom: 12px; }
+/* ── scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(108,112,134,.35); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(108,112,134,.55); }
+::-webkit-scrollbar-corner { background: transparent; }
+* { scrollbar-width: thin; scrollbar-color: rgba(108,112,134,.35) transparent; }
 </style>
 </head>
 <body>
