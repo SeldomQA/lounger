@@ -6,6 +6,7 @@ _FALLBACK_HTML = r"""<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>lounger Test Runner</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+CiAgPHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiByeD0iNiIgZmlsbD0iIzFlMWUyZSIvPgogIDxwYXRoIGQ9Ik0xMiA2aDh2MmgtMXYxMGwzIDcuNWMuNCAxLS4yIDIuMi0xLjMgMi41aC05LjRjLTEuMS0uMy0xLjctMS41LTEuMy0yLjVMMTMgMThWOGgtMVY2eiIgZmlsbD0iIzg5YjRmYSIgb3BhY2l0eT0iMC45Ii8+CiAgPGVsbGlwc2UgY3g9IjE2IiBjeT0iMjQiIHJ4PSI0IiByeT0iMiIgZmlsbD0iI2E2ZTNhMSIgb3BhY2l0eT0iMC42Ii8+CiAgPGNpcmNsZSBjeD0iMTQuNSIgY3k9IjIyIiByPSIwLjgiIGZpbGw9IiNhNmUzYTEiIG9wYWNpdHk9IjAuOCIvPgogIDxjaXJjbGUgY3g9IjE3IiBjeT0iMjMuNSIgcj0iMC41IiBmaWxsPSIjYTZlM2ExIiBvcGFjaXR5PSIwLjciLz4KPC9zdmc+">
 <style>
 :root {
   --bg: #1e1e2e; --surface: #282840; --border: #3a3a5c;
