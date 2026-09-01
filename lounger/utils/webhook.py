@@ -8,7 +8,7 @@ from typing import Any
 import requests
 
 from lounger.log import log
-from lounger.plugin_hooks import TestRunSummary
+from lounger.plugin_hooks import TestRunSummary, format_notification
 
 
 def _text_payload(content: str) -> dict[str, Any]:
@@ -154,3 +154,233 @@ class DingDingWebhook:
             requests.post(signed_url, json=data, timeout=10)
         except Exception as e:
             log.error(e)
+
+
+class FeishuWebhook:
+    """Feishu (Lark) robot webhook client."""
+
+    def __init__(self, webhook_url: str, secret: str = "") -> None:
+        """
+        Initialize the Feishu webhook client.
+
+        :param webhook_url: The full webhook URL.
+        :param secret: Optional secret for signature verification.
+        """
+        self.webhook_url = webhook_url
+        self.secret = secret
+
+    def is_configured(self) -> bool:
+        """Check whether a valid webhook URL has been configured."""
+        return bool(self.webhook_url)
+
+    def _get_signed_webhook_url(self) -> str:
+        """Generate a signed webhook URL if secret is configured."""
+        if not self.secret:
+            return self.webhook_url
+        timestamp = str(round(time.time()))
+        string_to_sign = f"{timestamp}\n{self.secret}"
+        string_to_sign_enc = string_to_sign.encode("utf-8")
+        hmac_code = hmac.new(
+            string_to_sign_enc, digestmod=hashlib.sha256
+        ).digest()
+        sign = base64.b64encode(hmac_code).decode("utf-8")
+        return f"{self.webhook_url}?timestamp={timestamp}&sign={sign}"
+
+    def send_summary_data(
+        self,
+        summary: TestRunSummary,
+        title: str = "Lounger Auto Test Summary",
+        report_path: str | None = None,
+    ) -> None:
+        """
+        Send a rich card summary from a normalized summary object.
+        """
+        if not self.is_configured():
+            log.warning("Feishu webhook not configured, skip notification.")
+            return
+
+        payload = format_notification(summary, title=title, report_path=report_path)
+        status_text = "PASSED" if summary.exitstatus == 0 else "FAILED"
+        color = "green" if summary.exitstatus == 0 else "red"
+
+        card = {
+            "msg_type": "interactive",
+            "card": {
+                "header": {
+                    "title": {"tag": "plain_text", "content": f"{payload.status_emoji} {title}"},
+                    "template": color,
+                },
+                "elements": [
+                    {
+                        "tag": "div",
+                        "fields": [
+                            {"is_short": True, "text": {"tag": "lark_md", "content": f"**📊 Total:** {summary.total}"}},
+                            {"is_short": True, "text": {"tag": "lark_md", "content": f"**✅ Passed:** {summary.passed}"}},
+                            {"is_short": True, "text": {"tag": "lark_md", "content": f"**❌ Failed:** {summary.failed}"}},
+                            {"is_short": True, "text": {"tag": "lark_md", "content": f"**⚠️ Errors:** {summary.errors}"}},
+                            {"is_short": True, "text": {"tag": "lark_md", "content": f"**⏭️ Skipped:** {summary.skipped}"}},
+                            {"is_short": True, "text": {"tag": "lark_md", "content": f"**📈 Success Rate:** {summary.success_rate}%"}},
+                        ],
+                    },
+                    {"tag": "hr"},
+                    {
+                        "tag": "div",
+                        "text": {"tag": "lark_md", "content": f"**Status:** {status_text}"},
+                    },
+                ],
+            },
+        }
+
+        if report_path:
+            card["card"]["elements"].append({
+                "tag": "action",
+                "actions": [{
+                    "tag": "button",
+                    "text": {"tag": "plain_text", "content": "📄 View Report"},
+                    "url": report_path,
+                    "type": "primary",
+                }],
+            })
+
+        try:
+            response = requests.post(self._get_signed_webhook_url(), json=card, timeout=10)
+            response.raise_for_status()
+            log.info(f"Feishu notification sent: {response.text}")
+        except Exception as e:
+            log.error(f"Failed to send Feishu notification: {e}")
+
+
+class WeComWebhook:
+    """WeCom (企业微信) robot webhook client."""
+
+    def __init__(self, webhook_url: str) -> None:
+        """
+        Initialize the WeCom webhook client.
+
+        :param webhook_url: The full webhook URL (no signature needed).
+        """
+        self.webhook_url = webhook_url
+
+    def is_configured(self) -> bool:
+        """Check whether a valid webhook URL has been configured."""
+        return bool(self.webhook_url)
+
+    def send_summary_data(
+        self,
+        summary: TestRunSummary,
+        title: str = "Lounger Auto Test Summary",
+        report_path: str | None = None,
+    ) -> None:
+        """
+        Send a markdown summary from a normalized summary object.
+        """
+        if not self.is_configured():
+            log.warning("WeCom webhook not configured, skip notification.")
+            return
+
+        payload = format_notification(summary, title=title, report_path=report_path)
+        status_text = "PASSED" if summary.exitstatus == 0 else "FAILED"
+
+        md_content = (
+            f"## {payload.status_emoji} {title}\n"
+            f"> Total: **{summary.total}** | "
+            f"Passed: **{summary.passed}** | "
+            f"Failed: **{summary.failed}**\n"
+            f"> Errors: **{summary.errors}** | "
+            f"Skipped: **{summary.skipped}** | "
+            f"Rate: **{summary.success_rate}%**\n\n"
+            f"**Status:** <font color=\"{'info' if summary.exitstatus == 0 else 'warning'}\">{status_text}</font>"
+        )
+        if report_path:
+            md_content += f"\n[View Report]({report_path})"
+
+        data = {
+            "msgtype": "markdown",
+            "markdown": {"content": md_content},
+        }
+
+        try:
+            response = requests.post(self.webhook_url, json=data, timeout=10)
+            response.raise_for_status()
+            log.info(f"WeCom notification sent: {response.text}")
+        except Exception as e:
+            log.error(f"Failed to send WeCom notification: {e}")
+
+
+class SlackWebhook:
+    """Slack incoming webhook client."""
+
+    def __init__(self, webhook_url: str) -> None:
+        """
+        Initialize the Slack webhook client.
+
+        :param webhook_url: The full Slack webhook URL.
+        """
+        self.webhook_url = webhook_url
+
+    def is_configured(self) -> bool:
+        """Check whether a valid webhook URL has been configured."""
+        return bool(self.webhook_url)
+
+    def send_summary_data(
+        self,
+        summary: TestRunSummary,
+        title: str = "Lounger Auto Test Summary",
+        report_path: str | None = None,
+    ) -> None:
+        """
+        Send a Block Kit summary from a normalized summary object.
+        """
+        if not self.is_configured():
+            log.warning("Slack webhook not configured, skip notification.")
+            return
+
+        payload = format_notification(summary, title=title, report_path=report_path)
+        status_text = "PASSED" if summary.exitstatus == 0 else "FAILED"
+        color = "#a6e3a1" if summary.exitstatus == 0 else "#f38ba8"
+
+        blocks = [
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": f"{payload.status_emoji} {title}"},
+            },
+            {
+                "type": "section",
+                "fields": [
+                    {"type": "mrkdwn", "text": f"*📊 Total:*\n{summary.total}"},
+                    {"type": "mrkdwn", "text": f"*✅ Passed:*\n{summary.passed}"},
+                    {"type": "mrkdwn", "text": f"*❌ Failed:*\n{summary.failed}"},
+                    {"type": "mrkdwn", "text": f"*⚠️ Errors:*\n{summary.errors}"},
+                    {"type": "mrkdwn", "text": f"*⏭️ Skipped:*\n{summary.skipped}"},
+                    {"type": "mrkdwn", "text": f"*📈 Rate:*\n{summary.success_rate}%"},
+                ],
+            },
+            {"type": "divider"},
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": f"*Status:* {status_text}"},
+            },
+        ]
+
+        if report_path:
+            blocks.append({
+                "type": "actions",
+                "elements": [{
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "📄 View Report"},
+                    "url": report_path,
+                }],
+            })
+
+        data = {
+            "text": payload.text,
+            "blocks": blocks,
+            "attachments": [{"color": color, "blocks": []}],
+        }
+
+        try:
+            response = requests.post(self.webhook_url, json=data, timeout=10)
+            response.raise_for_status()
+            log.info(f"Slack notification sent: {response.text}")
+        except Exception as e:
+            log.error(f"Failed to send Slack notification: {e}")

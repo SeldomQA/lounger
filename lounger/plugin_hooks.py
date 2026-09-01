@@ -219,3 +219,85 @@ def reset_hooks() -> None:
     _after_execute_step_hooks.clear()
     _on_execute_step_error_hooks.clear()
     _after_case_finish_hooks.clear()
+
+
+# ── notification templates ────────────────────────────────────────────────
+
+@dataclass
+class NotificationPayload:
+    """
+    Normalized notification payload for cross-channel consistency.
+
+    Attributes:
+        title: Notification title.
+        text: Plain-text body (fallback for channels without rich formatting).
+        markdown: Markdown-formatted body.
+        status_emoji: Emoji indicating pass/fail status.
+        summary: Original TestRunSummary data.
+        report_path: Optional path to the HTML report.
+    """
+
+    title: str
+    text: str
+    markdown: str
+    status_emoji: str
+    summary: TestRunSummary
+    report_path: Optional[str] = None
+
+
+def format_notification(
+    summary: TestRunSummary,
+    title: str = "Lounger Auto Test Summary",
+    report_path: Optional[str] = None,
+) -> NotificationPayload:
+    """
+    Build a normalized notification payload from a test run summary.
+
+    The returned payload contains both plain-text and markdown versions,
+    suitable for different notification channels (DingTalk, Feishu, WeCom, Slack).
+    """
+    status_emoji = "✅" if summary.exitstatus == 0 else "❌"
+    status_text = "PASSED" if summary.exitstatus == 0 else "FAILED"
+
+    # Plain text version
+    text_lines = [
+        f"{title}",
+        "-" * 26,
+        f"📊 Total: {summary.total}",
+        f"✅ Passed: {summary.passed}",
+        f"❌ Failed: {summary.failed}",
+        f"⚠️ Errors: {summary.errors}",
+        f"⏭️ Skipped: {summary.skipped}",
+        f"📈 Success Rate: {summary.success_rate}%",
+        "-" * 26,
+        f"Status: {status_text}",
+    ]
+    if report_path:
+        text_lines.append(f"📄 Report: {report_path}")
+
+    # Markdown version
+    md_lines = [
+        f"## {status_emoji} {title}",
+        "",
+        "| Metric | Value |",
+        "|--------|-------|",
+        f"| 📊 Total | **{summary.total}** |",
+        f"| ✅ Passed | **{summary.passed}** |",
+        f"| ❌ Failed | **{summary.failed}** |",
+        f"| ⚠️ Errors | **{summary.errors}** |",
+        f"| ⏭️ Skipped | **{summary.skipped}** |",
+        f"| 📈 Success Rate | **{summary.success_rate}%** |",
+        "",
+        f"**Status:** {status_text}",
+    ]
+    if report_path:
+        md_lines.append(f"\n📄 [View Report]({report_path})")
+
+    return NotificationPayload(
+        title=title,
+        text="\n".join(text_lines),
+        markdown="\n".join(md_lines),
+        status_emoji=status_emoji,
+        summary=summary,
+        report_path=report_path,
+    )
