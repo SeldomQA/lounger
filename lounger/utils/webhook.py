@@ -203,7 +203,8 @@ class FeishuWebhook:
         status_text = "PASSED" if summary.exitstatus == 0 else "FAILED"
         color = "green" if summary.exitstatus == 0 else "red"
 
-        card = {
+        # Explicit dict[str, Any] keeps mypy happy with the nested card shape.
+        card: dict[str, Any] = {
             "msg_type": "interactive",
             "card": {
                 "header": {
