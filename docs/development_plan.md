@@ -290,13 +290,13 @@ ai = ["autowing>=0.7.0"]
 
 ### 4.1 v1.4 — 近期（1-2 个月）：平台化与运行器
 
-#### F1. 平台化 API 完善
+#### F1. 平台化 API 完善 ✅ 已完成
 - **背景**：`--run-json` 已支持"按 JSON 指定用例顺序执行"，`platform_running.py` 已有收集/执行雏形。
 - **方案**：
-  - 用例收集输出增加 `tags` / `author` / `priority` 字段（从 mark/docstring 解析）；
-  - 提供结果回调：`--result-callback <url>` 或结果文件（junit + json），供平台入库；
-  - `lounger.services.case_discovery` 统一收集逻辑（web_runner 与 CLI 复用）。
-- **验收**：`python platform_running.py` 全流程（收集→执行→回传）在示例项目可用，附文档。
+  - 用例收集输出增加 `tags` / `author` / `priority` 字段（从 mark/docstring 解析）；✅ `lounger/utils/collect.py` 解析 docstring（`author:` / `priority:` / `tags:`）并合并自定义 mark
+  - 提供结果回调：`--result-callback <url>` 或结果文件（junit + json），供平台入库；✅ `lounger/plugin.py` 新增两个 option，`pytest_sessionfinish` 生成 summary + 逐用例结果 JSON（文件写入 / POST 回调）
+  - `lounger.services.case_discovery` 统一收集逻辑（web_runner 与 CLI 复用）；✅ `myapi/platform_running.py` 改用 services 层
+- **验收**：`python platform_running.py` 全流程（收集→执行→回传）在示例项目可用，附文档。✅ 已实测收集（含元数据）+ `--result-file` 端到端；文档见 `docs/run_json.md`「平台 API（F1）」
 
 #### F2. 报告增强
 - pytest-xhtml 定制：环境信息块（Python/浏览器/项目/时间）、用例耗时排序、失败截图聚合、YAML 用例展示 `step` 描述（已支持 description 列）。

@@ -29,6 +29,8 @@ html_title = "Lounger Test Report"
 # Per-item timing for after_case_finish (nodeid -> monotonic start time)
 _item_start_times: dict[str, float] = {}
 _item_finished: set[str] = set()
+#: Per-case results collected during the run (for --result-callback / --result-file)
+_case_results: list[TestRunResult] = []
 
 logo = rf"""
     __                                 
@@ -210,6 +212,7 @@ def _trigger_after_case_finish(item, report) -> None:
         duration=duration,
         description=str(getattr(item.function, "__doc__", "") or ""),
     )
+    _case_results.append(result)
     run_after_case_finish(result)
 
 def pytest_addoption(parser: Any) -> None:
@@ -233,6 +236,18 @@ def pytest_addoption(parser: Any) -> None:
         "--run-json",
         action="store",
         help="Pass the JSON of the use case to be executed."
+    )
+    group.addoption(
+        "--result-callback",
+        action="store",
+        default=None,
+        help="URL to POST the run summary (JSON) to after the session (platform ingestion)."
+    )
+    group.addoption(
+        "--result-file",
+        action="store",
+        default=None,
+        help="Write the run summary (JSON) to this file after the session (platform ingestion)."
     )
 
 
@@ -337,3 +352,73 @@ def pytest_sessionfinish(session, exitstatus):
 
     run_after_session_finish(summary)
     run_after_run_finish(report_path, summary)
+
+    # ── platform result delivery (F1) ────────────────────────────────────
+    # Runs after the after-run hooks so integrations can still be informed;
+    # delivers a JSON payload of the run summary + per-case results.
+    if option is not None:
+        callback_url = getattr(option, "result_callback", None)
+        result_file = getattr(option, "result_file", None)
+        if callback_url or result_file:
+            payload = _build_result_payload(summary, report_path, list(_case_results))
+            if result_file:
+                _write_result_file(result_file, payload)
+            if callback_url:
+                _post_result_callback(callback_url, payload)
+
+
+def _build_result_payload(summary, report_path, case_results) -> dict:
+    """
+    Build the platform-facing JSON result payload.
+
+    Shape::
+
+        {
+          "summary": {total, passed, failed, errors, skipped, exitstatus},
+          "report_path": "...",
+          "results": [{nodeid, status, duration, description}, ...]
+        }
+    """
+    return {
+        "summary": {
+            "total": summary.total,
+            "passed": summary.passed,
+            "failed": summary.failed,
+            "errors": summary.errors,
+            "skipped": summary.skipped,
+            "exitstatus": summary.exitstatus,
+        },
+        "report_path": report_path,
+        "results": [
+            {
+                "nodeid": r.nodeid,
+                "status": r.status,
+                "duration": r.duration,
+                "description": r.description,
+            }
+            for r in case_results
+        ],
+    }
+
+
+def _write_result_file(result_file: str, payload: dict) -> None:
+    """Write the result payload to a JSON file (platform ingestion)."""
+    try:
+        with open(result_file, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        log.info(f"📦 Run result written to: {result_file}")
+    except OSError as e:
+        log.error(f"Failed to write result file {result_file}: {e}")
+
+
+def _post_result_callback(url: str, payload: dict) -> None:
+    """POST the result payload to the platform callback URL (best-effort)."""
+    try:
+        import requests
+        resp = requests.post(url, json=payload, timeout=15)
+        if resp.ok:
+            log.info(f"📡 Run result posted to {url} ({resp.status_code})")
+        else:
+            log.error(f"Result callback returned {resp.status_code}: {resp.text[:200]}")
+    except Exception as e:
+        log.error(f"Result callback failed: {e}")

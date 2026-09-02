@@ -6,6 +6,10 @@ from lounger.commons.load_config import base_url
 def test_getting_resource(get):
     """
     Getting a resource
+
+    author: demo
+    priority: P1
+    tags: smoke, api
     """
     s = get(f"{base_url}/posts/1")
     expect(s).to_be_ok()
@@ -15,6 +19,10 @@ def test_getting_resource(get):
 def test_creating_resource(post):
     """
     Creating a resource
+
+    author: demo
+    priority: P2
+    tags: regression
     """
     data = {"title": "foo", "body": "bar", "userId": 1}
     s = post(f'{base_url}/posts', json=data)
