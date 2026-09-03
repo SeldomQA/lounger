@@ -295,7 +295,7 @@ class WeComWebhook:
         if report_path:
             md_content += f"\n[View Report]({report_path})"
 
-        data = {
+        data: dict[str, Any] = {
             "msgtype": "markdown",
             "markdown": {"content": md_content},
         }
@@ -340,7 +340,7 @@ class SlackWebhook:
         status_text = "PASSED" if summary.exitstatus == 0 else "FAILED"
         color = "#a6e3a1" if summary.exitstatus == 0 else "#f38ba8"
 
-        blocks = [
+        blocks: list[Any] = [
             {
                 "type": "header",
                 "text": {"type": "plain_text", "text": f"{payload.status_emoji} {title}"},
@@ -373,7 +373,7 @@ class SlackWebhook:
                 }],
             })
 
-        data = {
+        data: dict[str, Any] = {
             "text": payload.text,
             "blocks": blocks,
             "attachments": [{"color": color, "blocks": []}],
