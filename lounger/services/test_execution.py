@@ -16,19 +16,18 @@ import os
 import subprocess
 import sys
 import threading
-import time
 from pathlib import Path
 from typing import Callable
 
 VERBOSITY_FLAGS = {
     "quiet":   ["-q"],
     "normal":  [],
-    "verbose": ["-v", "-s"],
+    "verbose": ["-v"],
     "full":    ["-vv", "-s"],
 }
 
 
-def build_pytest_command(run_id: str, target_file: Path, verbosity: str = "verbose") -> list[str]:
+def build_pytest_command(run_id: str, target_file: Path, verbosity: str = "normal") -> list[str]:
     """
     Build the pytest subprocess command for a run.
 
@@ -36,7 +35,7 @@ def build_pytest_command(run_id: str, target_file: Path, verbosity: str = "verbo
     :param target_file: Path to the ``--run-json`` payload file.
     :param verbosity: quiet | normal | verbose | full.
     """
-    extra = VERBOSITY_FLAGS.get(verbosity, ["-v", "-s"])
+    extra = VERBOSITY_FLAGS.get(verbosity, [])
     return [
         sys.executable, "-m", "pytest",
         "--run-json", str(target_file),
@@ -65,7 +64,7 @@ def start_run(
     scan_dir: str,
     run_id: str,
     nodeids: list[str],
-    verbosity: str = "verbose",
+    verbosity: str = "normal",
     lock: threading.Lock | None = None,
     strip_ansi: Callable[[str], str] | None = None,
 ) -> None:
@@ -94,7 +93,6 @@ def start_run(
             "logs": [],
             "nodeids": nodeids,
             "exit_code": None,
-            "started_at": time.time(),
         }
 
     thread = threading.Thread(
@@ -158,13 +156,12 @@ def _execute_in_thread(
 
     proc.wait()
 
-    summary = f"\n\u2500\u2500 \u6267\u884c\u5b8c\u6210 (exit code: {proc.returncode}) \u2500\u2500\n"
+    summary = f"\n── 执行完成 (exit code: {proc.returncode}) ──\n"
     log_queue.put(summary)
     with lock:
         runs[run_id]["logs"].append(summary)
         runs[run_id]["status"] = "completed"
         runs[run_id]["exit_code"] = proc.returncode
-        runs[run_id]["finished_at"] = time.time()
 
     try:
         target_file.unlink()
@@ -182,8 +179,6 @@ def _serialize_run(info: dict) -> dict:
         "logs": info.get("logs", []),
         "exit_code": info.get("exit_code"),
         "error": info.get("error"),
-        "started_at": info.get("started_at"),
-        "finished_at": info.get("finished_at"),
     }
 
 
@@ -246,70 +241,3 @@ def archive_run(
             runs.pop(old_id, None)
 
         return True
-
-
-# ── run history queries (web runner v2) ───────────────────────────────────
-
-def _runs_dir(scan_dir: str) -> Path:
-    """Return the ``reports/runs/`` directory for a project."""
-    return Path(scan_dir) / "reports" / "runs"
-
-
-def list_archived_runs(scan_dir: str) -> list[dict]:
-    """
-    List all archived run snapshots under ``<scan_dir>/reports/runs/``.
-
-    Returns a list of summary dicts sorted by modification time (newest first).
-    Each summary contains: run_id, status, exit_code, case_count,
-    started_at, finished_at.
-    """
-    runs_dir = _runs_dir(scan_dir)
-    if not runs_dir.is_dir():
-        return []
-
-    results: list[dict] = []
-    for fp in sorted(runs_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
-        try:
-            data = json.loads(fp.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            continue
-        results.append({
-            "run_id": fp.stem,
-            "status": data.get("status"),
-            "exit_code": data.get("exit_code"),
-            "case_count": len(data.get("nodeids", [])),
-            "started_at": data.get("started_at"),
-            "finished_at": data.get("finished_at"),
-        })
-    return results
-
-
-def load_archived_run(scan_dir: str, run_id: str) -> dict | None:
-    """
-    Load a single archived run's full data (including logs).
-
-    :return: The run snapshot dict, or None if not found.
-    """
-    fp = _runs_dir(scan_dir) / f"{run_id}.json"
-    if not fp.is_file():
-        return None
-    try:
-        return json.loads(fp.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return None
-
-
-def delete_archived_run(scan_dir: str, run_id: str) -> bool:
-    """
-    Delete an archived run file.
-
-    :return: True if the file was deleted, False if not found.
-    """
-    fp = _runs_dir(scan_dir) / f"{run_id}.json"
-    if not fp.is_file():
-        return False
-    try:
-        fp.unlink()
-        return True
-    except OSError:
-        return False
