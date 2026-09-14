@@ -1,5 +1,7 @@
 from datetime import timedelta
 
+import pytest
+
 from lounger.commons.assert_result import api_validate
 
 
@@ -85,6 +87,38 @@ def test_validate_elapsed_expression():
     )
 
 
-def test_validate_non_prefixed_expression_treated_as_literal():
+def test_validate_non_prefixed_expression_treated_as_jmespath():
+    resp = DummyResponse({"code": 200, "data": {"name": "tom"}})
+    api_validate(
+        resp,
+        {
+            "equal": [
+                ["code", 200],
+                ["data.name", "tom"],
+            ]
+        },
+    )
+
+
+def test_validate_non_prefixed_expression_extracts_from_body():
+    from lounger.commons.assert_result import _get_actual_value
+
+    resp = DummyResponse({"userId": 1, "items": ["a", "b"]})
+    # bare expression == jmespath against the body (previously returned the literal string)
+    assert _get_actual_value(resp, "userId") == 1
+    assert _get_actual_value(resp, "items[0]") == "a"
+    assert _get_actual_value(resp, "items") == ["a", "b"]
+
+
+def test_validate_non_prefixed_expression_mismatch_raises():
     resp = DummyResponse({"code": 200})
-    api_validate(resp, {"equal": [["code", "code"]]})
+    with pytest.raises(AssertionError):
+        api_validate(resp, {"equal": [["code", "code"]]})
+
+
+def test_validate_non_string_expression_passed_through():
+    from lounger.commons.assert_result import _get_actual_value
+
+    resp = DummyResponse({"code": 200})
+    assert _get_actual_value(resp, 123) == 123
+    assert _get_actual_value(resp, None) is None
