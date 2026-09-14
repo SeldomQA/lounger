@@ -1,3 +1,36 @@
+## 1.6.0(2026-09-14)
+
+### 新功能
+
+* **平台化 API（F1：用例元数据 + 结果回传）**
+    * `lounger/utils/collect.py`：解析用例 docstring 中的 `author:` / `priority:` / `tags:` 元数据并合并自定义 mark，随用例收集输出，平台侧可直接消费。
+    * `lounger/plugin.py`：新增 `--result-file` / `--result-callback <url>` 两个选项——会话结束时生成会话摘要 + 逐用例结果（JSON），支持写入文件或 POST 回调，供平台入库。
+    * `myapi/platform_running.py` 示例改用 `lounger.services` 统一收集与执行。
+    * 文档：`docs/run_json.md` 新增「平台 API（F1）」一节；测试：`tests/test_platform_api.py`。
+* **Web Runner v2（F3）**
+    * 运行历史：运行结束自动归档（内存有界），新增「历史记录」面板，支持查看历史日志与删除；历史详情滚动修复、滚动条样式优化。
+    * 用例标签筛选 + 收藏（tag / favorite chips）。
+    * 浏览器页签内联 SVG favicon（data URI，无外部请求）。
+    * 测试：`tests/test_web_runner_v2.py`。
+* **通知渠道扩展（F4）**
+    * 新增 **飞书 / 企业微信 / Slack** 三个渠道：`integrations/feishu.py`、`wecom.py`、`slack.py`。
+    * `utils/webhook.py` 统一消息发送与签名逻辑；`plugin_hooks` 扩展点补齐，通知可按会话 / 运行 / 用例三个粒度触发。
+    * 测试：`tests/test_integrations.py`。
+* **断言表达式契约纳入 CI 覆盖**：新增 `tests/test_assert_result.py`，覆盖裸表达式（按 JMESPath 作用于 body）、`body.` / `json.` 前缀、响应 / 请求字段快捷方式、12 种断言类型与异常输入跳过；已实测可拦住该行为回归。
+
+### 修复
+
+* 修复：`samples/commons/test_assert_result_expressions.py` 仍在断言裸表达式的旧「字面量」行为，与已修复的 `assert_result.py` 相矛盾（该用例必然失败）——已改为 JMESPath 回归用例。
+* 修复：飞书卡片、企业微信、Slack payload 的 mypy `arg-type` 报错（显式类型标注）。
+* 修复：`CHANGES.md` 1.5.1 条目中 `HttpRequest` 一行被截断（未闭合反引号会导致后续内容被当作代码块）。
+
+### 依赖升级
+
+* `pytest-xhtml` 0.5.0 → **0.6.1**。
+* `autowing` 0.7.x → **0.8.1**（extras `ai`）。
+* 移除对 `requests` 的直接依赖（改由 `pytest-req` 传递引入）。
+
+
 ## 1.5.1(2026-08-19)
 
 本版本主要**修复 CI 兼容性问题**（pytest-playwright 0.8.0、loguru 日志），并更正一项历史设计决策（`ConfigUtils` 保留为公开 API，不废弃）。
