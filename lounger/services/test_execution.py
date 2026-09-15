@@ -83,19 +83,22 @@ def start_run(
     if strip_ansi is None:
         strip_ansi = lambda text: text  # noqa: E731
 
-    import queue as _queue
-    log_queue: _queue.Queue = _queue.Queue()
     lock = lock or threading.Lock()
 
     with lock:
-        runs[run_id] = {
-            "queue": log_queue,
+        # Register (or update in place) the run entry. The dict identity is
+        # kept stable because streaming clients hold a reference to it.
+        entry = runs.get(run_id)
+        if entry is None:
+            entry = {}
+            runs[run_id] = entry
+        entry.update({
             "status": "running",
             "logs": [],
             "nodeids": nodeids,
             "exit_code": None,
             "started_at": time.time(),
-        }
+        })
 
     thread = threading.Thread(
         target=_execute_in_thread,
@@ -146,20 +149,16 @@ def _execute_in_thread(
     with lock:
         runs[run_id]["_process"] = proc
 
-    log_queue = runs[run_id]["queue"]
-
     stdout = proc.stdout
     if stdout is not None:
         for raw_line in iter(stdout.readline, ""):
             clean = strip_ansi(raw_line)
-            log_queue.put(clean)
             with lock:
                 runs[run_id]["logs"].append(clean)
 
     proc.wait()
 
     summary = f"\n\u2500\u2500 \u6267\u884c\u5b8c\u6210 (exit code: {proc.returncode}) \u2500\u2500\n"
-    log_queue.put(summary)
     with lock:
         runs[run_id]["logs"].append(summary)
         runs[run_id]["status"] = "completed"

@@ -2,8 +2,8 @@
 
 import http.server
 import json
-import queue
 import threading
+import time
 import uuid
 from urllib.parse import urlparse
 
@@ -22,6 +22,14 @@ from .tree import _build_case_tree
 
 # HTML page cache (module-local)
 _HTML_PAGE: str | None = None
+
+#: How many log lines to pack into one SSE event. Batching keeps a chatty run
+#: from flooding the browser with one event per line (each event costs a
+#: ``message`` task + JSON parse + render on the client).
+_SSE_BATCH_LINES = 64
+
+#: How long the SSE reader waits between checks for new log lines.
+_SSE_POLL_INTERVAL = 0.15
 
 
 def _load_html() -> str:
@@ -191,17 +199,18 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
 
     def _start_run_with_id(self, run_id: str, nodeids: list[str], verbosity: str = "verbose"):
         """Start a run immediately (assumes concurrency check passed)."""
-        log_queue: queue.Queue = queue.Queue()
-
         with _runs_lock:
-            _active_runs[run_id] = {
-                "queue": log_queue,
+            # Pre-register a complete entry so a client connecting before the
+            # worker thread starts can stream right away. ``start_run`` updates
+            # this entry in place, keeping the dict identity (and any streaming
+            # cursors) valid.
+            _active_runs.setdefault(run_id, {
                 "status": "running",
                 "logs": [],
                 "nodeids": nodeids,
                 "exit_code": None,
-                "started_at": __import__("time").time(),
-            }
+                "started_at": time.time(),
+            })
 
         t = threading.Thread(
             target=_execute_tests,
@@ -215,9 +224,9 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
 
     def _serve_stream(self, run_id: str):
         with _runs_lock:
-            run_info = _active_runs.get(run_id)
+            in_memory = run_id in _active_runs
 
-        if run_info is None:
+        if not in_memory and load_archived_run(state._scan_dir, run_id) is None:
             self._serve_404()
             return
 
@@ -228,38 +237,85 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("X-Accel-Buffering", "no")
         self.end_headers()
 
-        log_queue = run_info["queue"]
-        sent_count = 0
-
-        with _runs_lock:
-            existing = list(run_info["logs"])
+        # Logs live in one authoritative list and every client keeps its own
+        # cursor, so a late or reconnecting client streams each line exactly
+        # once (no replay/queue duplication) — and lines are sent in batches:
+        # one SSE event per ``_SSE_BATCH_LINES`` lines instead of one per line,
+        # which is what floods the browser on a chatty run.
+        cursor = 0
+        last_send = time.monotonic()
+        from_memory = in_memory
 
         try:
-            for line in existing[sent_count:]:
-                self._sse_event({"line": line})
-                sent_count += 1
-
             while True:
-                try:
-                    line = log_queue.get(timeout=1)
-                    self._sse_event({"line": line})
-                    sent_count += 1
-                except queue.Empty:
-                    with _runs_lock:
-                        status = run_info["status"]
-                    if status in ("completed", "error"):
-                        self._sse_event({
-                            "line": "",
-                            "done": True,
-                            "exit_code": run_info.get("exit_code", -1),
-                            "status": status,
-                        })
-                        # archive finished runs to keep memory bounded (3.8 §1)
-                        archive_finished_runs()
-                        break
+                with _runs_lock:
+                    # re-read every round: the entry may have been archived
+                    info = _active_runs.get(run_id)
+                    if info is not None:
+                        logs = info.get("logs") or []
+                        batch = logs[cursor:cursor + _SSE_BATCH_LINES]
+                        status = info.get("status", "running")
+                        exit_code = info.get("exit_code", -1)
+                    else:
+                        batch = []
+                        status = None
+                        exit_code = -1
+
+                if batch:
+                    cursor += len(batch)
+                    self._sse_event({"lines": batch})
+                    last_send = time.monotonic()
+                    continue
+
+                if info is None:
+                    # The run left memory: a client that finished first archived
+                    # it. Serve the tail from the archived snapshot instead of
+                    # dropping it (keeps concurrent clients consistent).
+                    from_memory = False
+                    break
+
+                if status in ("completed", "error"):
+                    self._sse_event({
+                        "lines": [],
+                        "done": True,
+                        "exit_code": exit_code,
+                        "status": status,
+                    })
+                    # archive finished runs to keep memory bounded (3.8 §1)
+                    archive_finished_runs()
+                    break
+
+                time.sleep(_SSE_POLL_INTERVAL)
+                if time.monotonic() - last_send >= 1.0:
+                    last_send = time.monotonic()
                     self._sse_event({"heartbeat": True})
+
+            if not from_memory:
+                self._serve_archived_tail(run_id, cursor)
         except (BrokenPipeError, ConnectionResetError):
             pass
+
+    def _serve_archived_tail(self, run_id: str, cursor: int) -> None:
+        """Finish a stream from the archived snapshot of ``run_id``."""
+        archived = load_archived_run(state._scan_dir, run_id)
+        if archived is None:
+            self._sse_event({
+                "lines": [],
+                "done": True,
+                "exit_code": -1,
+                "status": "unknown",
+            })
+            return
+
+        logs = archived.get("logs") or []
+        for start in range(cursor, len(logs), _SSE_BATCH_LINES):
+            self._sse_event({"lines": logs[start:start + _SSE_BATCH_LINES]})
+        self._sse_event({
+            "lines": [],
+            "done": True,
+            "exit_code": archived.get("exit_code", -1),
+            "status": archived.get("status", "completed"),
+        })
 
     def _sse_event(self, data: dict):
         payload = json.dumps(data, ensure_ascii=False)

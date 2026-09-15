@@ -121,17 +121,23 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .history-detail { padding: 0; flex: 1; overflow: hidden; display: flex; flex-direction: column; }
 .history-detail-header { padding: 12px 20px; border-bottom: 1px solid var(--border);
   display: flex; align-items: center; gap: 12px; }
-/* ── log ── */
-.log-container { flex: 1; overflow-y: auto; padding: 16px 20px;
+/* ── log (windowed rendering: spacer + translated viewport) ── */
+.log-container { flex: 1; overflow: auto; position: relative;
   background: #11111b; font-family: "SF Mono", "Fira Code", monospace;
-  font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; }
-.log-line { }
+  font-size: 13px; }
+.log-spacer { width: 1px; opacity: 0; }
+.log-viewport { position: absolute; top: 0; left: 0; min-width: 100%;
+  width: max-content; padding: 0 20px; box-sizing: border-box; }
+/* height must match LOG_LINE_HEIGHT in the script, and lines must not wrap
+   (white-space: pre) so the windowed offset math stays exact */
+.log-line { height: 21px; line-height: 21px; white-space: pre; }
 .log-line.pass { color: var(--green); }
 .log-line.fail { color: var(--red); }
 .log-line.warn { color: var(--yellow); }
 .log-line.summary { color: var(--accent); font-weight: bold; }
 .log-placeholder { color: var(--muted); text-align: center; padding: 60px 20px; }
 .log-placeholder .icon { font-size: 48px; margin-bottom: 12px; }
+.log-notice { font-size: 11px; color: var(--yellow); }
 /* ── scrollbar ── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -176,6 +182,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
     <span class="status-dot" id="statusDot"></span>
     <span id="statusText">就绪</span>
     <span id="runCounter" style="font-size:12px;color:var(--muted)"></span>
+    <span class="log-notice" id="logNotice"></span>
     <span style="flex:1"></span>
     <span id="verbosityGroup" style="display:flex;align-items:center;gap:2px;font-size:12px;color:var(--muted)">
       <label style="cursor:pointer"><input type="radio" name="verbosity" value="quiet" onclick="setVerbosity('quiet')"> 静默</label>
@@ -194,10 +201,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
   <!-- live log panel -->
   <div class="tab-panel active" id="panelLive">
     <div class="log-container" id="logContainer">
-      <div class="log-placeholder">
-        <div class="icon">📋</div>
-        <div>选择左侧用例，点击「执行」开始</div>
-      </div>
+      <div class="log-spacer" id="logSpacer"></div>
+      <div class="log-viewport" id="logViewport"></div>
     </div>
   </div>
   <!-- history panel -->
@@ -218,7 +223,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
         <span style="flex:1"></span>
         <button class="btn btn-outline btn-sm" onclick="copyHistoryLogs()" id="copyHistoryBtn">📋 复制</button>
       </div>
-      <div class="log-container" id="historyLogContainer"></div>
+      <div class="log-container" id="historyLogContainer">
+        <div class="log-spacer" id="historyLogSpacer"></div>
+        <div class="log-viewport" id="historyLogViewport"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -240,6 +248,149 @@ let expandedNodes = loadExpandedNodes();
 let favorites = loadFavorites();
 let activeTagFilters = new Set();
 let showFavoritesOnly = false;
+
+// ── windowed log views ────────────────────────────────────────────────────
+// A chatty run can stream tens of thousands of log lines; appending one DOM
+// node per line freezes the browser. Each log view keeps the full text in
+// memory and renders only the visible window (plus overscan) inside a
+// translated viewport, while a spacer element carries the real scroll height.
+//
+// LOG_LINE_HEIGHT must match `.log-line` height in the CSS, and lines must
+// not wrap (`white-space: pre`) so the windowed offset math stays exact.
+const LOG_LINE_HEIGHT = 21;
+const LOG_OVERSCAN = 60;
+const LOG_FOLLOW_SLACK = 24;
+const LOG_MAX_LINES = 100000;
+
+function _logLineNode(line) {
+  const div = document.createElement('div');
+  div.className = 'log-line';
+  if (line.includes('PASSED')) div.classList.add('pass');
+  else if (line.includes('FAILED') || line.includes('ERROR')) div.classList.add('fail');
+  else if (line.includes('WARNING') || line.includes('skipped')) div.classList.add('warn');
+  else if (line.startsWith('──')) div.classList.add('summary');
+  div.textContent = line;
+  return div;
+}
+
+function createLogView(containerId, spacerId, viewportId, placeholderHtml) {
+  const container = document.getElementById(containerId);
+  const spacer = document.getElementById(spacerId);
+  const viewport = document.getElementById(viewportId);
+  const notice = document.getElementById('logNotice');
+
+  let lines = [];
+  let pending = [];
+  let flushFrame = null;
+  let renderFrame = null;
+  let follow = true;
+  let trimmed = 0;
+
+  function atBottom() {
+    return container.scrollTop + container.clientHeight >= container.scrollHeight - LOG_FOLLOW_SLACK;
+  }
+
+  function reserveHeight() {
+    spacer.style.height = (lines.length * LOG_LINE_HEIGHT) + 'px';
+  }
+
+  function render() {
+    renderFrame = null;
+    if (!lines.length) {
+      spacer.style.height = '0px';
+      viewport.style.transform = 'translateY(0px)';
+      viewport.innerHTML = placeholderHtml || '';
+      return;
+    }
+    const visibleRows = Math.ceil(container.clientHeight / LOG_LINE_HEIGHT);
+    const start = Math.max(0, Math.floor(container.scrollTop / LOG_LINE_HEIGHT) - LOG_OVERSCAN);
+    const end = Math.min(lines.length, start + visibleRows + LOG_OVERSCAN * 2);
+    const fragment = document.createDocumentFragment();
+    for (let i = start; i < end; i++) fragment.appendChild(_logLineNode(lines[i]));
+    reserveHeight();
+    viewport.style.transform = 'translateY(' + (start * LOG_LINE_HEIGHT) + 'px)';
+    viewport.replaceChildren(fragment);
+  }
+
+  function schedule() {
+    follow = atBottom();
+    if (renderFrame === null) renderFrame = requestAnimationFrame(render);
+  }
+
+  function flush() {
+    flushFrame = null;
+    if (pending.length) {
+      for (const line of pending) lines.push(line);
+      pending.length = 0;
+      if (lines.length > LOG_MAX_LINES) {
+        trimmed += lines.length - LOG_MAX_LINES;
+        lines.splice(0, lines.length - LOG_MAX_LINES);
+        if (notice && !notice.textContent) {
+          notice.textContent = '（已省略最早的 ' + trimmed + ' 行）';
+        }
+      }
+    }
+    if (follow) {
+      // reserve the new height first, then pin the view to the bottom
+      reserveHeight();
+      container.scrollTop = container.scrollHeight;
+    }
+    render();
+  }
+
+  container.addEventListener('scroll', schedule);
+
+  const view = {
+    push(newLines) {
+      if (!newLines || !newLines.length) return;
+      pending.push(...newLines);
+      if (flushFrame === null) flushFrame = requestAnimationFrame(flush);
+    },
+    /** Replace the whole content (history detail) and jump to the end. */
+    setLines(newLines) {
+      lines = (newLines || []).slice();
+      pending = [];
+      trimmed = 0;
+      if (notice) notice.textContent = '';
+      follow = true;
+      reserveHeight();
+      container.scrollTop = container.scrollHeight;
+      render();
+    },
+    clear() {
+      lines = [];
+      pending = [];
+      trimmed = 0;
+      if (notice) notice.textContent = '';
+      follow = true;
+      viewport.innerHTML = placeholderHtml || '';
+      spacer.style.height = '0px';
+      viewport.style.transform = 'translateY(0px)';
+    },
+    /** Full text (not just the rendered window) — used by the copy buttons. */
+    getText() { return lines.join('\n'); },
+    count() { return lines.length; },
+    atBottom,
+    refresh: schedule,
+  };
+
+  if (placeholderHtml) view.clear();
+  return view;
+}
+
+const liveLog = createLogView(
+  'logContainer', 'logSpacer', 'logViewport',
+  '<div class="log-placeholder"><div class="icon">📋</div>' +
+  '<div>选择左侧用例，点击「执行」开始</div></div>'
+);
+const historyLog = createLogView(
+  'historyLogContainer', 'historyLogSpacer', 'historyLogViewport', ''
+);
+
+window.addEventListener('resize', function() {
+  liveLog.refresh();
+  historyLog.refresh();
+});
 
 // ── localStorage helpers ──
 function loadExpandedNodes() {
@@ -355,21 +506,9 @@ async function viewHistoryRun(runId) {
     if (!resp.ok) { alert('未找到该运行记录'); return; }
     const data = await resp.json();
     document.getElementById('historyDetailTitle').textContent = runId + ' — ' + (data.exit_code === 0 ? '全部通过 ✅' : '执行失败 ❌');
-    const logEl = document.getElementById('historyLogContainer');
-    logEl.innerHTML = '';
-    const logs = data.logs || [];
-    for (const line of logs) {
-      const div = document.createElement('div');
-      div.className = 'log-line';
-      if (line.includes('PASSED')) div.classList.add('pass');
-      else if (line.includes('FAILED') || line.includes('ERROR')) div.classList.add('fail');
-      else if (line.includes('WARNING') || line.includes('skipped')) div.classList.add('warn');
-      else if (line.startsWith('──')) div.classList.add('summary');
-      div.textContent = line;
-      logEl.appendChild(div);
-    }
-    logEl.scrollTop = logEl.scrollHeight;
+    // show the panel first so the container has a real height for windowing
     showHistoryDetail();
+    historyLog.setLines(data.logs || []);
   } catch(e) {
     alert('加载失败: ' + e.message);
   }
@@ -386,8 +525,8 @@ async function deleteHistoryRun(runId) {
 }
 
 function copyHistoryLogs() {
-  const el = document.getElementById('historyLogContainer');
-  navigator.clipboard.writeText(el.innerText || '').catch(() => {});
+  // copy the whole archived log (not just the rendered window)
+  navigator.clipboard.writeText(historyLog.getText()).catch(() => {});
 }
 
 function formatTime(ts) {
@@ -741,22 +880,13 @@ async function startRun(nodeids) {
   clearLogs();
 
   eventSource = new EventSource('/api/stream/' + data.run_id);
-  const logEl = document.getElementById('logContainer');
 
   eventSource.onmessage = function(ev) {
     const msg = JSON.parse(ev.data);
     if (msg.heartbeat) return;
-    if (msg.line) {
-      const div = document.createElement('div');
-      div.className = 'log-line';
-      if (msg.line.includes('PASSED')) div.classList.add('pass');
-      else if (msg.line.includes('FAILED') || msg.line.includes('ERROR')) div.classList.add('fail');
-      else if (msg.line.includes('WARNING') || msg.line.includes('skipped')) div.classList.add('warn');
-      else if (msg.line.startsWith('──')) div.classList.add('summary');
-      div.textContent = msg.line;
-      logEl.appendChild(div);
-      logEl.scrollTop = logEl.scrollHeight;
-    }
+    // the server batches lines ("lines"); single-line events stay supported
+    const incoming = Array.isArray(msg.lines) ? msg.lines : (msg.line ? [msg.line] : []);
+    if (incoming.length) liveLog.push(incoming);
     if (msg.done) {
       eventSource.close();
       eventSource = null;
@@ -802,8 +932,8 @@ async function updateRunStatus() {
 }
 
 function copyLogs() {
-  const el = document.getElementById('logContainer');
-  const text = el.innerText || '';
+  // copy the whole log from the backing array, not the rendered window
+  const text = liveLog.getText();
   navigator.clipboard.writeText(text).then(() => {
     const btn = document.getElementById('copyBtn');
     const orig = btn.textContent;
@@ -825,7 +955,7 @@ function copyLogs() {
 }
 
 function clearLogs() {
-  document.getElementById('logContainer').innerHTML = '';
+  liveLog.clear();
 }
 
 async function refreshCases() {
