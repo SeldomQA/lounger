@@ -11,8 +11,10 @@ Run history is bounded: :func:`archive_run` keeps the most recent
 """
 from __future__ import annotations
 
+import configparser
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -27,23 +29,125 @@ VERBOSITY_FLAGS = {
     "full":    ["-vv", "-s"],
 }
 
+#: pytest options that produce an HTML report (``--html=PATH`` / ``--html PATH``
+#: and ``--self-contained-html``). Used to strip report generation from a
+#: project's ``addopts`` when the user unticks the report checkbox.
+_HTML_OPTION_RE = re.compile(r"(?:^|\s)--html(?:=\S+|\s+\S+)?|(?:^|\s)--self-contained-html\b")
 
-def build_pytest_command(run_id: str, target_file: Path, verbosity: str = "verbose") -> list[str]:
+#: Where run snapshots (history) are persisted, relative to the project root.
+RUNS_DIR = ("reports", "runs")
+
+
+def report_path(scan_dir: str, run_id: str) -> Path:
+    """
+    Return the HTML report path for a run.
+
+    Reports are per-run (``reports/result_<run_id>.html``) so that every entry
+    in the run history keeps pointing at its own report instead of all sharing
+    one overwritten file.
+
+    :param scan_dir: Project root directory.
+    :param run_id: Unique run identifier.
+    :return: The path the report will be written to.
+    """
+    return Path(scan_dir) / "reports" / f"result_{run_id}.html"
+
+
+def read_project_addopts(scan_dir: str) -> str:
+    """
+    Best-effort read of the project's pytest ``addopts``.
+
+    Looks at ``pytest.ini`` / ``tox.ini`` / ``setup.cfg`` (``[pytest]`` or
+    ``[tool:pytest]``) and ``pyproject.toml`` (``[tool.pytest.ini_options]``).
+
+    :param scan_dir: Project root directory.
+    :return: The ``addopts`` string, or ``""`` when it cannot be determined.
+    """
+    root = Path(scan_dir)
+
+    for name in ("pytest.ini", "tox.ini", "setup.cfg"):
+        path = root / name
+        if not path.is_file():
+            continue
+        parser = configparser.ConfigParser(interpolation=None)
+        try:
+            parser.read(path, encoding="utf-8")
+        except (configparser.Error, OSError, UnicodeDecodeError):
+            continue
+        for section in ("pytest", "tool:pytest"):
+            if parser.has_option(section, "addopts"):
+                return parser.get(section, "addopts").strip()
+
+    pyproject = root / "pyproject.toml"
+    if pyproject.is_file():
+        try:
+            import tomllib
+        except ModuleNotFoundError:  # pragma: no cover — Python < 3.11
+            return ""
+        try:
+            data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return ""
+        value = (
+            data.get("tool", {})
+            .get("pytest", {})
+            .get("ini_options", {})
+            .get("addopts")
+        )
+        if isinstance(value, str):
+            return value.strip()
+        if isinstance(value, list):
+            return " ".join(str(item) for item in value).strip()
+
+    return ""
+
+
+def without_html_addopts(addopts: str) -> str:
+    """
+    Remove HTML-report options from an ``addopts`` string.
+
+    Only the report tokens are dropped; every other option is preserved
+    verbatim (the string is not re-quoted, so project-specific flags keep
+    working).
+
+    :param addopts: The original ``addopts`` value.
+    :return: ``addopts`` without ``--html`` / ``--self-contained-html``.
+    """
+    return " ".join(_HTML_OPTION_RE.sub(" ", addopts).split())
+
+
+def build_pytest_command(
+    run_id: str,
+    target_file: Path,
+    verbosity: str = "verbose",
+    html_report: Path | None = None,
+    addopts_override: str | None = None,
+) -> list[str]:
     """
     Build the pytest subprocess command for a run.
 
     :param run_id: Run identifier (used in the JSON filename only).
     :param target_file: Path to the ``--run-json`` payload file.
     :param verbosity: quiet | normal | verbose | full.
+    :param html_report: When given, pass ``--html=<path>``. Command-line options
+        are parsed after the ini's ``addopts``, so this overrides a report path
+        configured in the project.
+    :param addopts_override: When given, replaces the project's ``addopts``
+        (used to drop report generation when the user unticks it).
     """
     extra = VERBOSITY_FLAGS.get(verbosity, ["-v", "-s"])
-    return [
+    cmd = [
         sys.executable, "-m", "pytest",
         "--run-json", str(target_file),
         *extra,
         "--tb=short",
         "--color=yes",
     ]
+    if html_report is not None:
+        cmd.append(f"--html={html_report}")
+    if addopts_override is not None:
+        cmd += ["-o", f"addopts={addopts_override}"]
+    return cmd
 
 
 def write_run_payload(scan_dir: str, run_id: str, nodeids: list[str]) -> Path:
@@ -68,6 +172,7 @@ def start_run(
     verbosity: str = "verbose",
     lock: threading.Lock | None = None,
     strip_ansi: Callable[[str], str] | None = None,
+    html_report: bool = False,
 ) -> None:
     """
     Start a run in a background thread (non-blocking).
@@ -79,11 +184,27 @@ def start_run(
     :param verbosity: pytest verbosity profile.
     :param lock: Lock guarding ``runs`` (created internally if ``None``).
     :param strip_ansi: Optional ``str -> str`` ANSI stripper for log lines.
+    :param html_report: Generate an HTML report for this run and expose it to
+        the web runner (the report path is recorded on the run entry).
     """
     if strip_ansi is None:
         strip_ansi = lambda text: text  # noqa: E731
 
     lock = lock or threading.Lock()
+
+    report_file = report_path(scan_dir, run_id) if html_report else None
+    addopts_override = None
+    if report_file is not None:
+        try:
+            report_file.parent.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            report_file = None
+    else:
+        # Unticked: drop report generation from the project's own addopts,
+        # otherwise pytest.ini would still write a report.
+        project_addopts = read_project_addopts(scan_dir)
+        if _HTML_OPTION_RE.search(project_addopts):
+            addopts_override = without_html_addopts(project_addopts)
 
     with lock:
         # Register (or update in place) the run entry. The dict identity is
@@ -98,11 +219,14 @@ def start_run(
             "nodeids": nodeids,
             "exit_code": None,
             "started_at": time.time(),
+            "html_report": report_file is not None,
+            "report_path": str(report_file) if report_file is not None else None,
         })
 
     thread = threading.Thread(
         target=_execute_in_thread,
-        args=(runs, scan_dir, run_id, nodeids, verbosity, lock, strip_ansi),
+        args=(runs, scan_dir, run_id, nodeids, verbosity, lock, strip_ansi,
+              report_file, addopts_override),
         daemon=True,
     )
     thread.start()
@@ -116,6 +240,8 @@ def _execute_in_thread(
     verbosity: str,
     lock: threading.Lock,
     strip_ansi: Callable[[str], str],
+    report_file: Path | None = None,
+    addopts_override: str | None = None,
 ) -> None:
     """Run pytest in a subprocess and stream lines into the run's log queue."""
     try:
@@ -126,7 +252,10 @@ def _execute_in_thread(
             runs[run_id]["error"] = f"failed to write run payload: {e}"
         return
 
-    cmd = build_pytest_command(run_id, target_file, verbosity)
+    cmd = build_pytest_command(
+        run_id, target_file, verbosity,
+        html_report=report_file, addopts_override=addopts_override,
+    )
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
 
@@ -164,6 +293,10 @@ def _execute_in_thread(
         runs[run_id]["status"] = "completed"
         runs[run_id]["exit_code"] = proc.returncode
         runs[run_id]["finished_at"] = time.time()
+        # a requested report may still be missing (pytest-html unavailable)
+        if report_file is not None and not report_file.is_file():
+            runs[run_id]["html_report"] = False
+            runs[run_id]["report_path"] = None
 
     try:
         target_file.unlink()
@@ -181,6 +314,8 @@ def _serialize_run(info: dict) -> dict:
         "logs": info.get("logs", []),
         "exit_code": info.get("exit_code"),
         "error": info.get("error"),
+        "html_report": bool(info.get("html_report")),
+        "report_path": info.get("report_path"),
         "started_at": info.get("started_at"),
         "finished_at": info.get("finished_at"),
     }

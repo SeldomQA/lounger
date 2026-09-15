@@ -190,6 +190,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
       <label style="cursor:pointer;margin-left:6px"><input type="radio" name="verbosity" value="verbose" onclick="setVerbosity('verbose')" checked> 详细</label>
       <label style="cursor:pointer;margin-left:6px"><input type="radio" name="verbosity" value="full" onclick="setVerbosity('full')"> 完整</label>
     </span>
+    <label id="reportGroup" title="运行结束后生成 HTML 报告，可在新标签页查看"
+           style="cursor:pointer;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:4px">
+      <input type="checkbox" id="reportToggle" onclick="setReportEnabled(this.checked)"> 📄 生成报告
+    </label>
+    <button class="btn btn-outline" onclick="openReport()" id="reportBtn" style="display:none">📄 查看报告</button>
     <button class="btn btn-outline" onclick="copyLogs()" id="copyBtn" style="display:none">📋 复制日志</button>
     <button class="btn btn-outline" onclick="clearLogs()" id="clearBtn" style="display:none">🧹 清空日志</button>
   </div>
@@ -222,6 +227,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
         <span id="historyDetailTitle" style="font-weight:500"></span>
         <span style="flex:1"></span>
         <button class="btn btn-outline btn-sm" onclick="copyHistoryLogs()" id="copyHistoryBtn">📋 复制</button>
+        <button class="btn btn-outline btn-sm" onclick="openHistoryReport()" id="historyReportBtn" style="display:none">📄 查看报告</button>
       </div>
       <div class="log-container" id="historyLogContainer">
         <div class="log-spacer" id="historyLogSpacer"></div>
@@ -244,10 +250,54 @@ let lastRunIds = new Set();
 const EXPANDED_NODES_KEY = 'lounger.webRunner.expandedNodes';
 const SIDEBAR_WIDTH_KEY = 'lounger.webRunner.sidebarWidth';
 const FAVORITES_KEY = 'lounger.webRunner.favorites';
+const REPORT_ENABLED_KEY = 'lounger.webRunner.reportEnabled';
 let expandedNodes = loadExpandedNodes();
 let favorites = loadFavorites();
 let activeTagFilters = new Set();
 let showFavoritesOnly = false;
+let reportEnabled = loadReportEnabled();
+let currentReportUrl = null;
+let currentHistoryRunId = null;
+
+function loadReportEnabled() {
+  try {
+    const raw = localStorage.getItem(REPORT_ENABLED_KEY);
+    return raw === null ? true : raw === 'true';   // on by default
+  } catch(_) {
+    return true;
+  }
+}
+
+function setReportEnabled(enabled) {
+  reportEnabled = !!enabled;
+  try {
+    localStorage.setItem(REPORT_ENABLED_KEY, String(reportEnabled));
+  } catch(_) {}
+}
+
+function showReportButton(url) {
+  currentReportUrl = url || null;
+  const btn = document.getElementById('reportBtn');
+  if (!btn) return;
+  if (currentReportUrl) {
+    btn.style.display = '';
+    btn.title = '在新标签页打开本次运行的 HTML 报告';
+  } else {
+    btn.style.display = 'none';
+    btn.removeAttribute('title');
+  }
+}
+
+function openReport() {
+  if (!currentReportUrl) return;
+  window.open(currentReportUrl, '_blank', 'noopener');
+}
+
+/** Open the archived run's report (served from reports/runs/<id>.json entry). */
+function openHistoryReport() {
+  if (!currentHistoryRunId) return;
+  window.open('/api/report/' + currentHistoryRunId, '_blank', 'noopener');
+}
 
 // ── windowed log views ────────────────────────────────────────────────────
 // A chatty run can stream tens of thousands of log lines; appending one DOM
@@ -509,6 +559,9 @@ async function viewHistoryRun(runId) {
     // show the panel first so the container has a real height for windowing
     showHistoryDetail();
     historyLog.setLines(data.logs || []);
+    currentHistoryRunId = data.report_path ? runId : null;
+    const reportBtn = document.getElementById('historyReportBtn');
+    if (reportBtn) reportBtn.style.display = currentHistoryRunId ? '' : 'none';
   } catch(e) {
     alert('加载失败: ' + e.message);
   }
@@ -865,7 +918,7 @@ async function startRun(nodeids) {
   const resp = await fetch('/api/run', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({nodeids, verbosity: currentVerbosity})
+    body: JSON.stringify({nodeids, verbosity: currentVerbosity, report: reportEnabled})
   });
   const data = await resp.json();
   if (data.error) { alert(data.error); return; }
@@ -877,6 +930,7 @@ async function startRun(nodeids) {
   document.getElementById('statusText').textContent = '运行中 (' + data.count + ' 用例)';
   document.getElementById('copyBtn').style.display = '';
   document.getElementById('clearBtn').style.display = '';
+  showReportButton(null);   // a new run invalidates the previous report
   clearLogs();
 
   eventSource = new EventSource('/api/stream/' + data.run_id);
@@ -894,6 +948,7 @@ async function startRun(nodeids) {
         (msg.exit_code === 0 ? 'done' : 'error');
       document.getElementById('statusText').textContent =
         msg.exit_code === 0 ? '全部通过 ✅' : '执行失败 ❌ (exit ' + msg.exit_code + ')';
+      showReportButton(msg.report_url || null);
       setRunButtonsDisabled(false);
       updateRunStatus();
       loadCases();
@@ -974,6 +1029,8 @@ async function refreshCases() {
 
 function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
+const reportToggleEl = document.getElementById('reportToggle');
+if (reportToggleEl) reportToggleEl.checked = reportEnabled;
 applySidebarWidth(loadSidebarWidth());
 loadCases();
 updateRunStatus();

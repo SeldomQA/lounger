@@ -15,7 +15,12 @@ from . import state
 KEEP_RECENT_RUNS = 20
 
 
-def _execute_tests(run_id: str, nodeids: list[str], verbosity: str = "verbose") -> None:
+def _execute_tests(
+    run_id: str,
+    nodeids: list[str],
+    verbosity: str = "verbose",
+    html_report: bool = False,
+) -> None:
     """Run pytest in a background thread; archive the finished run."""
     start_run(
         runs=state._active_runs,
@@ -25,6 +30,7 @@ def _execute_tests(run_id: str, nodeids: list[str], verbosity: str = "verbose") 
         verbosity=verbosity,
         lock=state._runs_lock,
         strip_ansi=state._strip_ansi,
+        html_report=html_report,
     )
 
 

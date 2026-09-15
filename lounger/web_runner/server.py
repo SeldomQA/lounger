@@ -2,15 +2,18 @@
 
 import http.server
 import json
+import mimetypes
 import threading
 import time
 import uuid
+from pathlib import Path
 from urllib.parse import urlparse
 
 from lounger.services.test_execution import (
     delete_archived_run,
     list_archived_runs,
     load_archived_run,
+    report_path,
 )
 
 from . import state
@@ -30,6 +33,16 @@ _SSE_BATCH_LINES = 64
 
 #: How long the SSE reader waits between checks for new log lines.
 _SSE_POLL_INTERVAL = 0.15
+
+
+def _guess_content_type(path: Path) -> str:
+    """Content type for a report asset (pytest-html writes .css/.js/.png)."""
+    guessed, _ = mimetypes.guess_type(str(path))
+    if guessed is None:
+        return "application/octet-stream"
+    if guessed.startswith("text/") or guessed in ("application/javascript", "image/svg+xml"):
+        return f"{guessed}; charset=utf-8"
+    return guessed
 
 
 def _load_html() -> str:
@@ -69,6 +82,8 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
         elif path.startswith("/api/history/"):
             run_id = path.split("/")[-1]
             self._serve_history_detail(run_id)
+        elif path.startswith("/api/report/"):
+            self._serve_report(parsed.path)
         elif path.startswith("/api/stream/"):
             self._serve_stream(path.split("/")[-1])
         else:
@@ -161,6 +176,75 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"Not Found")
 
+    # ── HTML report ──
+
+    def _run_report_path(self, run_id: str) -> Path | None:
+        """Resolve the HTML report of a run (in memory, else archived)."""
+        with _runs_lock:
+            info = _active_runs.get(run_id)
+            report_path = info.get("report_path") if info else None
+        if not report_path:
+            archived = load_archived_run(state._scan_dir, run_id)
+            if archived:
+                report_path = archived.get("report_path")
+        if not report_path:
+            return None
+        path = Path(report_path)
+        return path if path.is_file() else None
+
+    def _serve_report(self, raw_path: str) -> None:
+        """
+        Serve a run's HTML report.
+
+        ``/api/report/<run_id>`` redirects to the report file itself so that
+        the document URL lives inside the report directory — relative asset
+        URLs (``assets/style.css`` written by pytest-html) keep working.
+        ``/api/report/<run_id>/<relative path>`` serves those assets.
+        """
+        parts = [part for part in raw_path.split("/") if part]
+        if len(parts) < 3:
+            self._serve_404()
+            return
+
+        run_id = parts[2]
+        report = self._run_report_path(run_id)
+        if report is None:
+            self._serve_404()
+            return
+
+        relative = "/".join(parts[3:])
+        if not relative:
+            self._redirect(f"/api/report/{run_id}/{report.name}")
+            return
+
+        target = (report.parent / relative).resolve()
+        try:
+            target.relative_to(report.parent.resolve())
+        except ValueError:
+            # path traversal attempt
+            self._serve_404()
+            return
+        if not target.is_file():
+            self._serve_404()
+            return
+
+        body = target.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", _guess_content_type(target))
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _redirect(self, location: str) -> None:
+        self.send_response(302)
+        self.send_header("Location", location)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def _report_url(self, run_id: str) -> str | None:
+        """URL the browser can open to view this run's report (or None)."""
+        return f"/api/report/{run_id}" if self._run_report_path(run_id) else None
+
     def _read_body(self) -> dict:
         length = int(self.headers.get("Content-Length", 0))
         raw = self.rfile.read(length) if length else b"{}"
@@ -178,8 +262,9 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
             return
 
         verbosity = body.get("verbosity", "verbose")
+        html_report = bool(body.get("report"))
         run_id = uuid.uuid4().hex[:8]
-        self._start_run_with_id(run_id, nodeids, verbosity)
+        self._start_run_with_id(run_id, nodeids, verbosity, html_report)
 
     def _handle_run_all(self):
         cases = get_test_cases()
@@ -194,10 +279,17 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
 
         body = self._read_body()
         verbosity = body.get("verbosity", "verbose")
+        html_report = bool(body.get("report"))
         run_id = uuid.uuid4().hex[:8]
-        self._start_run_with_id(run_id, all_nodeids, verbosity)
+        self._start_run_with_id(run_id, all_nodeids, verbosity, html_report)
 
-    def _start_run_with_id(self, run_id: str, nodeids: list[str], verbosity: str = "verbose"):
+    def _start_run_with_id(
+        self,
+        run_id: str,
+        nodeids: list[str],
+        verbosity: str = "verbose",
+        html_report: bool = False,
+    ):
         """Start a run immediately (assumes concurrency check passed)."""
         with _runs_lock:
             # Pre-register a complete entry so a client connecting before the
@@ -210,11 +302,15 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
                 "nodeids": nodeids,
                 "exit_code": None,
                 "started_at": time.time(),
+                "html_report": html_report,
+                "report_path": (
+                    str(report_path(state._scan_dir, run_id)) if html_report else None
+                ),
             })
 
         t = threading.Thread(
             target=_execute_tests,
-            args=(run_id, nodeids, verbosity),
+            args=(run_id, nodeids, verbosity, html_report),
             daemon=True,
         )
         t.start()
@@ -280,6 +376,7 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
                         "done": True,
                         "exit_code": exit_code,
                         "status": status,
+                        "report_url": self._report_url(run_id),
                     })
                     # archive finished runs to keep memory bounded (3.8 §1)
                     archive_finished_runs()
@@ -315,6 +412,7 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
             "done": True,
             "exit_code": archived.get("exit_code", -1),
             "status": archived.get("status", "completed"),
+            "report_url": self._report_url(run_id),
         })
 
     def _sse_event(self, data: dict):
