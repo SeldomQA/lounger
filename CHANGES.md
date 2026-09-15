@@ -1,12 +1,25 @@
+## 1.6.1(2026-09-15)
+
+* Web Runner新功能：
+  * 按需生成并查看 HTML 报告
+  * 启动后自动打开默认浏览器
+  * 端口被占用不再报错
+* 性能与稳定性：
+  * Web Runner 日志改为**窗口化渲染**：只渲染可视区域（含预渲染），用 spacer 撑高 + viewport 位移。
+  * SSE **批量推送**：每 64 行合并为一个事件（此前每行一个事件）。
+  * 日志改为增量刷新合帧（`requestAnimationFrame`）；**仅在滚动到底部时自动跟随**；长行可横向滚动完整查看（不再被裁掉）。
+  * 「复制日志」改为复制**全量文本**（此前窗口化后只能复制可见部分）。
+* 修复 Bug
+  * 修复：日志**每行被推送两次**
+  * 修复：**并发客户端丢失尾部日志**
+  * 修复：`start_run` 整体替换运行字典，导致已连接的流客户端持有失效引用；改为原地更新。
+  * 修复：恢复被 PR #32 误删的 Web Runner v2 功能（运行历史、标签筛选、收藏、运行状态、并发启动保护），并新增测试护栏防止再次误删。
+
 ## 1.6.0(2026-09-14)
 
 ### 新功能
 
 * **平台化 API（F1：用例元数据 + 结果回传）**
-    * `lounger/utils/collect.py`：解析用例 docstring 中的 `author:` / `priority:` / `tags:` 元数据并合并自定义 mark，随用例收集输出，平台侧可直接消费。
-    * `lounger/plugin.py`：新增 `--result-file` / `--result-callback <url>` 两个选项——会话结束时生成会话摘要 + 逐用例结果（JSON），支持写入文件或 POST 回调，供平台入库。
-    * `myapi/platform_running.py` 示例改用 `lounger.services` 统一收集与执行。
-    * 文档：`docs/run_json.md` 新增「平台 API（F1）」一节；测试：`tests/test_platform_api.py`。
 * **Web Runner v2（F3）**
     * 运行历史：运行结束自动归档（内存有界），新增「历史记录」面板，支持查看历史日志与删除；历史详情滚动修复、滚动条样式优化。
     * 用例标签筛选 + 收藏（tag / favorite chips）。
@@ -15,7 +28,6 @@
 * **通知渠道扩展（F4）**
     * 新增 **飞书 / 企业微信 / Slack** 三个渠道：`integrations/feishu.py`、`wecom.py`、`slack.py`。
     * `utils/webhook.py` 统一消息发送与签名逻辑；`plugin_hooks` 扩展点补齐，通知可按会话 / 运行 / 用例三个粒度触发。
-    * 测试：`tests/test_integrations.py`。
 * **断言表达式契约纳入 CI 覆盖**：新增 `tests/test_assert_result.py`，覆盖裸表达式（按 JMESPath 作用于 body）、`body.` / `json.` 前缀、响应 / 请求字段快捷方式、12 种断言类型与异常输入跳过；已实测可拦住该行为回归。
 
 ### 修复
@@ -86,11 +98,6 @@
 * `--html-title` / `--env` 的 `default=[]` 改为 `default=None`（语义正确）。
 * ExtractVar 自动扫描弃用：模板函数显式注册（`lounger.runtime.register_template_func` / `LOUNGER_TEMPLATE_FUNCTIONS`）。
 
-### 文档
-
-* 新增 `docs/project_guide.md`（业务项目开发指南）、`docs/plugin_hooks.md`（扩展点）、`docs/run_json.md`（平台执行协议）。
-* 新增 mkdocs 文档站（`mkdocs.yml` + `docs/index.md`）。
-* 脚手架 `project_temp/api` 增加 README 演练。
 
 ## 1.3.3(2026-06-30)
 
