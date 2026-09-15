@@ -16,6 +16,7 @@ import contextlib
 import json
 import threading
 import urllib.request
+from pathlib import Path
 
 from lounger.web_runner import server as server_mod
 from lounger.web_runner.html import _FALLBACK_HTML
@@ -74,18 +75,23 @@ def _forget(run_id: str) -> None:
         _active_runs.pop(run_id, None)
 
 
-def _stub_executor(lines, on_run=None):
+def _stub_executor(lines, on_run=None, writes_report=False):
     """Return a fake executor that appends ``lines`` then completes."""
 
-    def fake_execute(run_id, nodeids, verbosity="verbose"):
+    def fake_execute(run_id, nodeids, verbosity="verbose", html_report=False):
         if on_run is not None:
             on_run()
         with _runs_lock:
             info = _active_runs[run_id]
             logs = info["logs"]
+            report_path = info.get("report_path")
         for line in lines:
             with _runs_lock:
                 logs.append(line)
+        if writes_report and html_report and report_path:
+            report = Path(report_path)
+            report.parent.mkdir(parents=True, exist_ok=True)
+            report.write_text("<html><body>report</body></html>", encoding="utf-8")
         with _runs_lock:
             info["status"] = "completed"
             info["exit_code"] = 0
