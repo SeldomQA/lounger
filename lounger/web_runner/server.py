@@ -7,12 +7,6 @@ import threading
 import uuid
 from urllib.parse import urlparse
 
-from lounger.services.test_execution import (
-    delete_archived_run,
-    list_archived_runs,
-    load_archived_run,
-)
-
 from . import state
 from .collect import get_test_cases
 from .executor import _execute_tests, archive_finished_runs
@@ -22,6 +16,7 @@ from .tree import _build_case_tree
 
 # HTML page cache (module-local)
 _HTML_PAGE: str | None = None
+_SSE_BATCH_LINES = 64
 
 
 def _load_html() -> str:
@@ -56,11 +51,6 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
             self._serve_json({"tree": tree, "flat": cases})
         elif path == "/api/runs":
             self._serve_runs()
-        elif path == "/api/history":
-            self._serve_history_list()
-        elif path.startswith("/api/history/"):
-            run_id = path.split("/")[-1]
-            self._serve_history_detail(run_id)
         elif path.startswith("/api/stream/"):
             self._serve_stream(path.split("/")[-1])
         else:
@@ -76,16 +66,6 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
             self._handle_run_all()
         elif path == "/api/refresh":
             self._serve_refresh()
-        else:
-            self._serve_404()
-
-    def do_DELETE(self):
-        parsed = urlparse(self.path)
-        path = parsed.path.rstrip("/") or "/"
-
-        if path.startswith("/api/history/"):
-            run_id = path.split("/")[-1]
-            self._handle_delete_history(run_id)
         else:
             self._serve_404()
 
@@ -117,35 +97,13 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
                     "nodeids": info["nodeids"],
                     "log_count": len(info["logs"]),
                     "exit_code": info.get("exit_code"),
-                    "started_at": info.get("started_at"),
                 }
-        self._serve_json({
-            "active": runs,
-            "active_count": state.active_run_count(),
-            "running": state.is_any_run_active(),
-        })
+        self._serve_json(runs)
 
     def _serve_refresh(self):
         state.clear_caches()
         cases = get_test_cases()
         self._serve_json({"refreshed": True, "count": len(cases)})
-
-    # ── history handlers ──
-
-    def _serve_history_list(self):
-        runs = list_archived_runs(state._scan_dir)
-        self._serve_json(runs)
-
-    def _serve_history_detail(self, run_id: str):
-        data = load_archived_run(state._scan_dir, run_id)
-        if data is None:
-            self._serve_404()
-            return
-        self._serve_json(data)
-
-    def _handle_delete_history(self, run_id: str):
-        ok = delete_archived_run(state._scan_dir, run_id)
-        self._serve_json({"deleted": ok, "run_id": run_id})
 
     def _serve_404(self):
         self.send_response(404)
@@ -165,32 +123,9 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
             self._serve_json({"error": "No test cases selected"})
             return
 
-        if state.is_any_run_active():
-            self._serve_json({"error": "有任务正在运行，请等待完成后再试"})
-            return
+        verbosity = body.get("verbosity", "normal")
 
-        verbosity = body.get("verbosity", "verbose")
         run_id = uuid.uuid4().hex[:8]
-        self._start_run_with_id(run_id, nodeids, verbosity)
-
-    def _handle_run_all(self):
-        cases = get_test_cases()
-        all_nodeids = [c["nodeid"] for c in cases if c.get("nodeid")]
-        if not all_nodeids:
-            self._serve_json({"error": "No test cases found"})
-            return
-
-        if state.is_any_run_active():
-            self._serve_json({"error": "有任务正在运行，请等待完成后再试"})
-            return
-
-        body = self._read_body()
-        verbosity = body.get("verbosity", "verbose")
-        run_id = uuid.uuid4().hex[:8]
-        self._start_run_with_id(run_id, all_nodeids, verbosity)
-
-    def _start_run_with_id(self, run_id: str, nodeids: list[str], verbosity: str = "verbose"):
-        """Start a run immediately (assumes concurrency check passed)."""
         log_queue: queue.Queue = queue.Queue()
 
         with _runs_lock:
@@ -200,16 +135,39 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
                 "logs": [],
                 "nodeids": nodeids,
                 "exit_code": None,
-                "started_at": __import__("time").time(),
             }
 
-        t = threading.Thread(
-            target=_execute_tests,
-            args=(run_id, nodeids, verbosity),
-            daemon=True,
-        )
+        t = threading.Thread(target=_execute_tests, args=(run_id, nodeids, verbosity), daemon=True)
         t.start()
-        self._serve_json({"run_id": run_id, "count": len(nodeids), "status": "running"})
+        self._serve_json({"run_id": run_id, "count": len(nodeids)})
+
+    def _handle_run_all(self):
+        cases = get_test_cases()
+        all_nodeids = [c["nodeid"] for c in cases if c.get("nodeid")]
+        if not all_nodeids:
+            self._serve_json({"error": "No test cases found"})
+            return
+
+        body = self._read_body()
+        verbosity = body.get("verbosity", "normal")
+        self._start_run(all_nodeids, verbosity)
+
+    def _start_run(self, nodeids: list[str], verbosity: str = "normal"):
+        run_id = uuid.uuid4().hex[:8]
+        log_queue: queue.Queue = queue.Queue()
+
+        with _runs_lock:
+            _active_runs[run_id] = {
+                "queue": log_queue,
+                "status": "running",
+                "logs": [],
+                "nodeids": nodeids,
+                "exit_code": None,
+            }
+
+        t = threading.Thread(target=_execute_tests, args=(run_id, nodeids, verbosity), daemon=True)
+        t.start()
+        self._serve_json({"run_id": run_id, "count": len(nodeids)})
 
     # ── SSE streaming ──
 
@@ -229,21 +187,23 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
 
         log_queue = run_info["queue"]
-        sent_count = 0
-
         with _runs_lock:
             existing = list(run_info["logs"])
 
         try:
-            for line in existing[sent_count:]:
-                self._sse_event({"line": line})
-                sent_count += 1
+            for start in range(0, len(existing), _SSE_BATCH_LINES):
+                self._sse_event({"lines": existing[start:start + _SSE_BATCH_LINES]})
 
             while True:
                 try:
                     line = log_queue.get(timeout=1)
-                    self._sse_event({"line": line})
-                    sent_count += 1
+                    lines = [line]
+                    while len(lines) < _SSE_BATCH_LINES:
+                        try:
+                            lines.append(log_queue.get_nowait())
+                        except queue.Empty:
+                            break
+                    self._sse_event({"lines": lines})
                 except queue.Empty:
                     with _runs_lock:
                         status = run_info["status"]
