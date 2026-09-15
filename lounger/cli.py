@@ -40,13 +40,16 @@ def main(ctx, project_web, project_api):
 @click.option("--host", default="127.0.0.1", help="Bind address (default: 127.0.0.1)")
 @click.option("--port", type=int, default=5000, help="Port (default: 5000)")
 @click.option("--project", default=".", help="Project root directory (default: .)")
-def runner(host, port, project):
+@click.option("--no-browser", is_flag=True, default=False,
+              help="Do not open the runner in the default browser.")
+def runner(host, port, project, no_browser):
     """Start the web test runner.
 
-    Launches a browser-based UI for browsing and executing test cases.
+    Opens the runner in your default browser (use --no-browser to skip,
+    e.g. on a remote/headless machine).
     """
     from lounger.web_runner import main as start_runner
-    start_runner(host=host, port=port, scan_dir=project)
+    start_runner(host=host, port=port, scan_dir=project, open_browser=not no_browser)
 
 
 # ── scaffold creation ──────────────────────────────────────────────────
