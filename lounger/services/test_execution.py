@@ -9,24 +9,28 @@ Run history is bounded: :func:`archive_run` keeps the most recent
 ``keep_recent`` runs in memory and persists the rest under
 ``<scan_dir>/reports/runs/`` so long-running services do not grow unbounded.
 """
+
 from __future__ import annotations
 
 import configparser
 import json
 import os
 import re
+import shlex
+import signal
 import subprocess
 import sys
 import threading
 import time
+from importlib import import_module
 from pathlib import Path
 from typing import Callable
 
 VERBOSITY_FLAGS = {
-    "quiet":   ["-q"],
-    "normal":  [],
+    "quiet": ["-q"],
+    "normal": [],
     "verbose": ["-v", "-s"],
-    "full":    ["-vv", "-s"],
+    "full": ["-vv", "-s"],
 }
 
 #: pytest options that produce an HTML report (``--html=PATH`` / ``--html PATH``
@@ -81,23 +85,18 @@ def read_project_addopts(scan_dir: str) -> str:
     pyproject = root / "pyproject.toml"
     if pyproject.is_file():
         try:
-            import tomllib
-        except ModuleNotFoundError:  # pragma: no cover — Python < 3.11
+            toml = import_module("tomllib" if sys.version_info >= (3, 11) else "tomli")
+        except ModuleNotFoundError:  # pytest supplies tomli on Python 3.10
             return ""
         try:
-            data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+            data = toml.loads(pyproject.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return ""
-        value = (
-            data.get("tool", {})
-            .get("pytest", {})
-            .get("ini_options", {})
-            .get("addopts")
-        )
+        value = data.get("tool", {}).get("pytest", {}).get("ini_options", {}).get("addopts")
         if isinstance(value, str):
             return value.strip()
         if isinstance(value, list):
-            return " ".join(str(item) for item in value).strip()
+            return shlex.join(str(item) for item in value)
 
     return ""
 
@@ -106,14 +105,20 @@ def without_html_addopts(addopts: str) -> str:
     """
     Remove HTML-report options from an ``addopts`` string.
 
-    Only the report tokens are dropped; every other option is preserved
-    verbatim (the string is not re-quoted, so project-specific flags keep
-    working).
+    Only report tokens are dropped. Shell-style quoting is preserved
+    semantically, including report paths and other values containing spaces.
 
     :param addopts: The original ``addopts`` value.
     :return: ``addopts`` without ``--html`` / ``--self-contained-html``.
     """
-    return " ".join(_HTML_OPTION_RE.sub(" ", addopts).split())
+    tokens = iter(shlex.split(addopts))
+    retained = []
+    for token in tokens:
+        if token == "--html":
+            next(tokens, None)
+        elif token != "--self-contained-html" and not token.startswith("--html="):
+            retained.append(token)
+    return shlex.join(retained)
 
 
 def build_pytest_command(
@@ -137,8 +142,11 @@ def build_pytest_command(
     """
     extra = VERBOSITY_FLAGS.get(verbosity, ["-v", "-s"])
     cmd = [
-        sys.executable, "-m", "pytest",
-        "--run-json", str(target_file),
+        sys.executable,
+        "-m",
+        "pytest",
+        "--run-json",
+        str(target_file),
         *extra,
         "--tb=short",
         "--color=yes",
@@ -148,6 +156,53 @@ def build_pytest_command(
     if addopts_override is not None:
         cmd += ["-o", f"addopts={addopts_override}"]
     return cmd
+
+
+def launch_pytest(cmd: list[str], cwd: str | Path, stdout=subprocess.PIPE, env: dict | None = None):
+    """Launch an isolated pytest process group, with streamed or file-backed output."""
+    flags = (
+        {"creationflags": getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)}
+        if os.name == "nt"
+        else {"start_new_session": True}
+    )
+    return subprocess.Popen(
+        cmd,
+        cwd=cwd,
+        stdout=stdout,
+        stderr=subprocess.STDOUT,
+        text=stdout == subprocess.PIPE,
+        bufsize=1 if stdout == subprocess.PIPE else -1,
+        env=env or {**os.environ, "PYTHONUNBUFFERED": "1"},
+        **flags,
+    )
+
+
+def terminate_pytest(proc: subprocess.Popen) -> None:
+    """Terminate the owned process tree; never identify an unrelated process by PID alone."""
+    if os.name == "nt":
+        # Ask for a graceful break before terminating remaining descendants.
+        try:
+            proc.send_signal(getattr(signal, "CTRL_BREAK_EVENT", signal.SIGTERM))
+            proc.wait(timeout=3)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        if proc.poll() is None:
+            subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, timeout=10)
+    else:
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            proc.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            pass
+        # The parent may exit before children that ignore SIGTERM.
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    proc.wait(timeout=10)
 
 
 def write_run_payload(scan_dir: str, run_id: str, nodeids: list[str]) -> Path:
@@ -213,20 +268,21 @@ def start_run(
         if entry is None:
             entry = {}
             runs[run_id] = entry
-        entry.update({
-            "status": "running",
-            "logs": [],
-            "nodeids": nodeids,
-            "exit_code": None,
-            "started_at": time.time(),
-            "html_report": report_file is not None,
-            "report_path": str(report_file) if report_file is not None else None,
-        })
+        entry.update(
+            {
+                "status": "running",
+                "logs": [],
+                "nodeids": nodeids,
+                "exit_code": None,
+                "started_at": time.time(),
+                "html_report": report_file is not None,
+                "report_path": str(report_file) if report_file is not None else None,
+            }
+        )
 
     thread = threading.Thread(
         target=_execute_in_thread,
-        args=(runs, scan_dir, run_id, nodeids, verbosity, lock, strip_ansi,
-              report_file, addopts_override),
+        args=(runs, scan_dir, run_id, nodeids, verbosity, lock, strip_ansi, report_file, addopts_override),
         daemon=True,
     )
     thread.start()
@@ -253,22 +309,17 @@ def _execute_in_thread(
         return
 
     cmd = build_pytest_command(
-        run_id, target_file, verbosity,
-        html_report=report_file, addopts_override=addopts_override,
+        run_id,
+        target_file,
+        verbosity,
+        html_report=report_file,
+        addopts_override=addopts_override,
     )
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
 
     try:
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            cwd=scan_dir,
-            env=env,
-        )
+        proc = launch_pytest(cmd, scan_dir, env=env)
     except FileNotFoundError:
         with lock:
             runs[run_id]["status"] = "error"
@@ -305,6 +356,7 @@ def _execute_in_thread(
 
 
 # ── run history / archival (memory-bounded, §3.8) ─────────────────────────
+
 
 def _serialize_run(info: dict) -> dict:
     """Extract serializable fields from a run entry (drop queue/process)."""
@@ -369,10 +421,7 @@ def archive_run(
         runs.pop(run_id, None)
 
         # keep only the most recent `keep_recent` finished runs in memory
-        finished = [
-            rid for rid, info in runs.items()
-            if info.get("status") in ("completed", "error")
-        ]
+        finished = [rid for rid, info in runs.items() if info.get("status") in ("completed", "error")]
         # sort by insertion order of the dict (approximate finish order)
         excess = finished[: max(0, len(finished) - keep_recent)]
         for old_id in excess:
@@ -383,6 +432,7 @@ def archive_run(
 
 
 # ── run history queries (web runner v2) ───────────────────────────────────
+
 
 def _runs_dir(scan_dir: str) -> Path:
     """Return the ``reports/runs/`` directory for a project."""
@@ -407,14 +457,16 @@ def list_archived_runs(scan_dir: str) -> list[dict]:
             data = json.loads(fp.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             continue
-        results.append({
-            "run_id": fp.stem,
-            "status": data.get("status"),
-            "exit_code": data.get("exit_code"),
-            "case_count": len(data.get("nodeids", [])),
-            "started_at": data.get("started_at"),
-            "finished_at": data.get("finished_at"),
-        })
+        results.append(
+            {
+                "run_id": fp.stem,
+                "status": data.get("status"),
+                "exit_code": data.get("exit_code"),
+                "case_count": len(data.get("nodeids", [])),
+                "started_at": data.get("started_at"),
+                "finished_at": data.get("finished_at"),
+            }
+        )
     return results
 
 

@@ -42,14 +42,25 @@ def main(ctx, project_web, project_api):
 @click.option("--project", default=".", help="Project root directory (default: .)")
 @click.option("--no-browser", is_flag=True, default=False,
               help="Do not open the runner in the default browser.")
-def runner(host, port, project, no_browser):
+@click.option("--data-dir", default=None, help="Runner data directory (default: <project>/.lounger)")
+def runner(host, port, project, no_browser, data_dir):
     """Start the web test runner.
 
     Opens the runner in your default browser (use --no-browser to skip,
     e.g. on a remote/headless machine).
     """
     from lounger.web_runner import main as start_runner
-    start_runner(host=host, port=port, scan_dir=project, open_browser=not no_browser)
+    options = {"data_dir": data_dir} if data_dir else {}
+    try:
+        start_runner(host=host, port=port, scan_dir=project, open_browser=not no_browser, **options)
+    except RuntimeError as exc:
+        if "already has a running Lounger runner" not in str(exc):
+            raise
+        raise click.ClickException(
+            "A Lounger runner is already running for this project. Use the existing page, "
+            "or press Ctrl+C in the original terminal before restarting. "
+            "The --project option is not required; lounger runner uses the current directory by default."
+        ) from exc
 
 
 # ── scaffold creation ──────────────────────────────────────────────────
@@ -74,6 +85,7 @@ def create_scaffold(project_name: str, type: str) -> None:
     template_base = current_file.parent / "project_temp"
 
     project_root.mkdir(parents=True, exist_ok=True)
+    (project_root / ".gitignore").write_text(".lounger/\n", encoding="utf-8")
     (project_root / "reports").mkdir(exist_ok=True)
     log.info("📁 created folder: reports")
 

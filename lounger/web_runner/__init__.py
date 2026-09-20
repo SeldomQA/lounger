@@ -10,6 +10,7 @@ CLI access via:
 
 import errno
 import os
+import socket
 import threading
 import webbrowser
 from pathlib import Path
@@ -17,8 +18,11 @@ from pathlib import Path
 from lounger.log import log
 
 from . import state
+from .api import PlatformHandler as _RequestHandler
 from .collect import get_test_cases  # noqa: F401 — public API
-from .server import _RequestHandler, _ThreadingHTTPServer
+from .context import ProjectContext
+from .manager import RunManager
+from .server import _ThreadingHTTPServer
 
 __all__ = ["main", "browser_url", "get_test_cases"]
 
@@ -80,6 +84,18 @@ def _open_browser(url: str) -> None:
     threading.Thread(target=_open, name="lounger-open-browser", daemon=True).start()
 
 
+def _port_has_listener(host: str, port: int) -> bool:
+    """Detect listeners before bind, including macOS wildcard SO_REUSEADDR sharing."""
+    if port == 0:
+        return False
+    target = "127.0.0.1" if host in _WILDCARD_HOSTS else host.strip("[]")
+    try:
+        with socket.create_connection((target, port), timeout=0.2):
+            return True
+    except OSError:
+        return False
+
+
 def _bind_server(host: str, port: int):
     """
     Bind the runner, moving to the next free port when ``port`` is taken.
@@ -97,6 +113,8 @@ def _bind_server(host: str, port: int):
     candidates = [port] + [port + offset for offset in range(1, _PORT_ATTEMPTS + 1)]
     for index, candidate in enumerate(candidates):
         try:
+            if _port_has_listener(host, candidate):
+                raise OSError(errno.EADDRINUSE, "An existing service is listening on this port")
             server = _ThreadingHTTPServer((host, candidate), _RequestHandler)
         except OSError as exc:
             if exc.errno not in _ADDRESS_IN_USE_ERRNOS:
@@ -127,6 +145,7 @@ def main(
     port: int = 5000,
     scan_dir: str = ".",
     open_browser: bool = True,
+    data_dir: str | None = None,
 ):
     """Start the lounger web test runner.
 
@@ -140,6 +159,20 @@ def main(
     state._scan_dir = str(Path(scan_dir).resolve())
 
     server, bound_port = _bind_server(host, port)
+    # Tests and third-party adapters can still supply lightweight server doubles.
+    manager = None
+    if hasattr(server, 'server_close'):
+        import secrets
+        try:
+            manager = RunManager(ProjectContext.create(scan_dir, data_dir))
+            manager.watch()
+            server.manager = manager
+            server.session_token = secrets.token_urlsafe(32)
+        except Exception:
+            server.server_close()
+            if manager is not None:
+                manager.close()
+            raise
 
     url = browser_url(host, bound_port)
     log.info(f"🚀 lounger web runner → {url}")
@@ -156,4 +189,14 @@ def main(
         server.serve_forever()
     except KeyboardInterrupt:
         log.info("👋 Shutting down.")
-        server.shutdown()
+        # serve_forever has already exited; shutdown() here would deadlock on real servers.
+        if manager is None:
+            server.shutdown()
+
+    finally:
+        if manager is not None:
+            # Release the listening socket before potentially slow worker/watcher cleanup.
+            try:
+                server.server_close()
+            finally:
+                manager.close()

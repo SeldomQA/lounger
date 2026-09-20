@@ -17,7 +17,11 @@ def _build_case_tree(cases: list[dict], scan_dir: str) -> dict:
     for c in cases:
         filepath = c.get("file", "")
         try:
-            rel = Path(filepath).resolve().relative_to(base)
+            source = Path(filepath)
+            # YAML metadata is relative to the project, not the runner process cwd.
+            if not source.is_absolute():
+                source = base / source
+            rel = source.resolve().relative_to(base)
         except (ValueError, OSError):
             rel = Path(Path(filepath).name)
 

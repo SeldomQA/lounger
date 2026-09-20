@@ -51,6 +51,8 @@ def _collect_via_subprocess(scan_dir: str, timeout: int = 30) -> list[dict]:
         timeout=timeout,
     )
 
+    if result.returncode != 0:
+        raise ValueError((result.stderr or result.stdout)[-4000:] or "pytest collection failed")
     stdout = result.stdout.strip()
     if not stdout:
         stdout = result.stderr.strip()
