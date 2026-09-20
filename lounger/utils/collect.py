@@ -78,11 +78,13 @@ class JsonCollector:
 def get_test_cases(path):
     collector = JsonCollector()
     # Use --collect-only parameter to prevent test execution
-    pytest.main([
+    code = pytest.main([
         "--collect-only",
         "-W", "ignore::pytest.PytestAssertRewriteWarning",
         path
     ], plugins=[collector])
+    if code not in (0, 5):
+        raise RuntimeError(f"pytest collection failed with exit code {code}")
     return collector.test_data
 
 
