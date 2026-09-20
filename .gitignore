@@ -167,4 +167,5 @@ collected_cases/
 lounger/utils/cache_data.json
 tests/data/*.sqlite3
 reports/
+.lounger/
 /*.csv            # root-level personal data files
