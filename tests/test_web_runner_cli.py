@@ -298,3 +298,85 @@ def test_runner_cli_no_browser_flag(monkeypatch):
 
     assert result.exit_code == 0, result.output
     assert captured["open_browser"] is False
+
+
+def test_runner_bare_command_uses_current_project(tmp_path, monkeypatch):
+    from lounger.web_runner.context import ProjectContext
+
+    project = tmp_path / "myapi"
+    project.mkdir()
+    monkeypatch.chdir(project)
+    contexts = []
+    monkeypatch.setattr(web_runner_mod, "main", lambda **kw: contexts.append(ProjectContext.create(kw["scan_dir"])))
+    result = CliRunner().invoke(cli.main, ["runner"])
+    assert result.exit_code == 0, result.output
+    assert contexts[0].root == project.resolve()
+    assert contexts[0].data_dir == (project / ".lounger").resolve()
+
+
+def test_runner_duplicate_project_shows_actionable_error(monkeypatch):
+    def already_running(**kwargs):
+        raise RuntimeError("This project already has a running Lounger runner")
+
+    monkeypatch.setattr(web_runner_mod, "main", already_running)
+    result = CliRunner().invoke(cli.main, ["runner"])
+    assert result.exit_code == 1
+    assert "A Lounger runner is already running for this project." in result.output
+    assert "The --project option is not required" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_runner_no_options_starts_http_service_in_current_directory(tmp_path):
+    """Exercise the real CLI/main/server chain, including cwd and port fallback."""
+    import json
+    import os
+    import re
+    import subprocess
+    import sys
+    from pathlib import Path
+    from urllib.request import urlopen
+
+    project = tmp_path / "myapi"
+    project.mkdir()
+    env = {**os.environ, "CI": "1", "PYTHONPATH": str(Path(__file__).resolve().parents[1])}
+    output_path = tmp_path / "startup.log"
+    with output_path.open("w") as output:
+        process = subprocess.Popen(
+            [sys.executable, "-c", "from lounger.cli import main; main()", "runner"],
+            cwd=project, env=env, stdout=output, stderr=subprocess.STDOUT,
+        )
+        try:
+            deadline = time.monotonic() + 15
+            while time.monotonic() < deadline:
+                text = output_path.read_text()
+                match = re.search(r"web runner → (http://[^\s\x1b]+)", text)
+                if match:
+                    with urlopen(match[1] + "/api/v1/project", timeout=5) as response:
+                        data = json.load(response)
+                    assert Path(data["path"]) == project.resolve()
+                    assert (project / ".lounger" / "runner.db").is_file()
+                    break
+                assert process.poll() is None, text
+                time.sleep(0.05)
+            else:
+                pytest.fail("Runner did not start: " + output_path.read_text())
+        finally:
+            process.terminate()
+            process.wait(timeout=10)
+
+
+def test_preflight_skips_listener_even_when_bind_would_succeed(fake_server, monkeypatch):
+    """BSD/macOS may allow a loopback bind alongside an existing wildcard listener."""
+    monkeypatch.setattr(web_runner_mod, "_port_has_listener", lambda host, port: port == 5000)
+    server, port = web_runner_mod._bind_server("127.0.0.1", 5000)
+    assert port == 5001
+    assert server.address == ("127.0.0.1", 5001)
+
+
+def test_probe_detects_wildcard_listener():
+    with socket.socket() as listener:
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        listener.bind(("0.0.0.0", 0))
+        listener.listen(1)
+        assert web_runner_mod._port_has_listener("127.0.0.1", listener.getsockname()[1])
+    assert not web_runner_mod._port_has_listener("127.0.0.1", 0)

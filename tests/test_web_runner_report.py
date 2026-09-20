@@ -7,6 +7,7 @@ Tests for the HTML report feature of the web runner:
   new browser tab (``file://`` links are blocked from an ``http://`` page);
 - run history keeps each run's own report path.
 """
+
 import json
 import threading
 import urllib.error
@@ -21,6 +22,7 @@ from lounger.web_runner.html import _FALLBACK_HTML
 from lounger.web_runner.state import _active_runs, _runs_lock
 
 # ── service layer: report path & addopts handling ─────────────────────────
+
 
 def test_report_path_is_per_run(tmp_path):
     path = test_execution.report_path(str(tmp_path), "abc123")
@@ -89,9 +91,7 @@ def test_build_pytest_command_with_report(tmp_path):
 def test_build_pytest_command_without_report_overrides_addopts(tmp_path):
     target = tmp_path / "_web_run_x.json"
 
-    cmd = test_execution.build_pytest_command(
-        "x", target, "quiet", addopts_override="-p no:cacheprovider"
-    )
+    cmd = test_execution.build_pytest_command("x", target, "quiet", addopts_override="-p no:cacheprovider")
 
     assert not any(str(part).startswith("--html") for part in cmd)
     assert "-o" in cmd
@@ -99,6 +99,7 @@ def test_build_pytest_command_without_report_overrides_addopts(tmp_path):
 
 
 # ── service layer: start_run records the report ───────────────────────────
+
 
 def test_start_run_enables_report(tmp_path, monkeypatch):
     """With the checkbox on, the run records its report path and disables nothing."""
@@ -109,9 +110,7 @@ def test_start_run_enables_report(tmp_path, monkeypatch):
         captured["addopts_override"] = kwargs.get("addopts_override", args[-1] if args else None)
 
     monkeypatch.setattr(test_execution, "_execute_in_thread", fake_execute)
-    (tmp_path / "pytest.ini").write_text(
-        "[pytest]\naddopts = --html=./reports/result.html\n", encoding="utf-8"
-    )
+    (tmp_path / "pytest.ini").write_text("[pytest]\naddopts = --html=./reports/result.html\n", encoding="utf-8")
     runs: dict = {}
 
     test_execution.start_run(runs, str(tmp_path), "run1", ["a::b"], html_report=True)
@@ -147,15 +146,14 @@ def test_start_run_disables_project_report(tmp_path, monkeypatch):
 
 
 def test_serialize_run_keeps_report_fields():
-    snapshot = test_execution._serialize_run(
-        {"status": "completed", "html_report": True, "report_path": "/tmp/r.html"}
-    )
+    snapshot = test_execution._serialize_run({"status": "completed", "html_report": True, "report_path": "/tmp/r.html"})
 
     assert snapshot["html_report"] is True
     assert snapshot["report_path"] == "/tmp/r.html"
 
 
 # ── server: serving the report over HTTP ──────────────────────────────────
+
 
 def _with_server():
     httpd = server_mod._ThreadingHTTPServer(("127.0.0.1", 0), server_mod._RequestHandler)
@@ -166,10 +164,13 @@ def _with_server():
 def _get(url, redirect=True):
     if redirect:
         return urllib.request.urlopen(url, timeout=5)
-    opener = urllib.request.build_opener(type(
-        "NoRedirect", (urllib.request.HTTPRedirectHandler,),
-        {"redirect_request": lambda *a, **k: None},
-    ))
+    opener = urllib.request.build_opener(
+        type(
+            "NoRedirect",
+            (urllib.request.HTTPRedirectHandler,),
+            {"redirect_request": lambda *a, **k: None},
+        )
+    )
     return opener.open(url, timeout=5)
 
 
@@ -179,8 +180,7 @@ def test_report_is_served_and_assets_resolve(tmp_path, monkeypatch):
     (report_dir / "assets").mkdir(parents=True)
     report = report_dir / "result_run1.html"
     report.write_text(
-        '<html><head><link rel="stylesheet" href="assets/style.css"></head>'
-        "<body>lounger report</body></html>",
+        '<html><head><link rel="stylesheet" href="assets/style.css"></head><body>lounger report</body></html>',
         encoding="utf-8",
     )
     (report_dir / "assets" / "style.css").write_text("body{color:red}", encoding="utf-8")
@@ -281,13 +281,11 @@ def test_run_request_with_report_reports_url(tmp_path, monkeypatch):
             run_id = json.loads(resp.read())["run_id"]
 
         events = []
-        with urllib.request.urlopen(
-            f"http://127.0.0.1:{port}/api/stream/{run_id}", timeout=10
-        ) as resp:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/stream/{run_id}", timeout=10) as resp:
             for raw in resp:
                 text = raw.decode().strip()
                 if text.startswith("data: "):
-                    payload = json.loads(text[len("data: "):])
+                    payload = json.loads(text[len("data: ") :])
                     events.append(payload)
                     if payload.get("done"):
                         break
@@ -329,14 +327,12 @@ def test_run_without_report_has_no_report_url(tmp_path, monkeypatch):
         with urllib.request.urlopen(request, timeout=5) as resp:
             run_id = json.loads(resp.read())["run_id"]
 
-        with urllib.request.urlopen(
-            f"http://127.0.0.1:{port}/api/stream/{run_id}", timeout=10
-        ) as resp:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/stream/{run_id}", timeout=10) as resp:
             for raw in resp:
                 text = raw.decode().strip()
                 if not text.startswith("data: "):
                     continue
-                payload = json.loads(text[len("data: "):])
+                payload = json.loads(text[len("data: ") :])
                 if payload.get("done"):
                     assert payload["report_url"] is None
                     break
@@ -349,6 +345,7 @@ def test_run_without_report_has_no_report_url(tmp_path, monkeypatch):
 
 
 # ── client UI ─────────────────────────────────────────────────────────────
+
 
 def test_html_has_report_toggle_and_button():
     assert 'id="reportToggle"' in _FALLBACK_HTML
@@ -366,3 +363,20 @@ def test_html_has_report_toggle_and_button():
     # history detail can open the archived run's report too
     assert 'id="historyReportBtn"' in _FALLBACK_HTML
     assert "function openHistoryReport(" in _FALLBACK_HTML
+
+
+def test_report_toggle_preserves_quoted_project_options():
+    import shlex
+
+    cleaned = test_execution.without_html_addopts('--html="reports/my report.html" -k "some test" --base-url "a b"')
+    assert shlex.split(cleaned) == ["-k", "some test", "--base-url", "a b"]
+
+
+def test_pyproject_list_preserves_argument_boundaries(tmp_path):
+    import shlex
+
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.pytest.ini_options]\naddopts = ["-k", "some test", "--html=a b.html"]\n'
+    )
+    options = test_execution.read_project_addopts(str(tmp_path))
+    assert shlex.split(options) == ["-k", "some test", "--html=a b.html"]
