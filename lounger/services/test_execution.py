@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Callable
 
 VERBOSITY_FLAGS = {
-    "quiet": ["-q"],
+    "quiet": ["--verbosity=-1", "--capture=fd", "-o", "log_cli=false"],
     "normal": [],
     "verbose": ["-v", "-s"],
     "full": ["-vv", "-s"],

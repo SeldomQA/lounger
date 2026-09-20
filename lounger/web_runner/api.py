@@ -168,7 +168,16 @@ class PlatformHandler(_RequestHandler):
                     store.delete_task(task_id)
                     return self.reply({"deleted": True})
             if parts[2:] == ["runs"] and method == "POST":
-                return self.reply(manager.start(store.task(task_id), task_id, self.headers.get("Idempotency-Key")), 202)
+                data = self.body()
+                return self.reply(
+                    manager.start(
+                        store.task(task_id),
+                        task_id,
+                        self.headers.get("Idempotency-Key"),
+                        verbosity_override=data.get("verbosity", "quiet"),
+                    ),
+                    202,
+                )
         if parts == ["runs"]:
             if method == "GET":
                 filters = {k: query[k] for k in ("task_id", "state", "outcome", "date_from", "date_to") if query.get(k)}

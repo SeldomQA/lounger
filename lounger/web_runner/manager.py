@@ -40,7 +40,7 @@ def validate_definition(data, task=False):
     if not isinstance(ids, list) or not ids or any(not isinstance(n, str) or not n or len(n) > 4096 for n in ids):
         raise Problem("invalid_selection", "Select at least one valid nodeid")
     options = data.get("options", {})
-    if not isinstance(options, dict) or options.get("verbosity", "verbose") not in (
+    if not isinstance(options, dict) or options.get("verbosity", "quiet") not in (
         "quiet",
         "normal",
         "verbose",
@@ -51,7 +51,7 @@ def validate_definition(data, task=False):
         raise Problem("invalid_options", "html_report must be a boolean")
     item: dict[str, Any] = dict(
         selection={"type": "nodeids", "nodeids": list(dict.fromkeys(ids))},
-        options={"verbosity": options.get("verbosity", "verbose"), "html_report": options.get("html_report", False)},
+        options={"verbosity": options.get("verbosity", "quiet"), "html_report": options.get("html_report", False)},
     )
     if task:
         name, description = data.get("name"), data.get("description", "")
@@ -300,10 +300,15 @@ class RunManager:
             )
         return {"checked_at": checked, "items": items}
 
-    def start(self, data, task_id=None, key=None):
+    def start(self, data, task_id=None, key=None, verbosity_override=None):
         if key and len(key) > 256:
             raise Problem("invalid_key", "Idempotency key exceeds 256 characters")
-        request = validate_definition(data)
+        definition = validate_definition(data)
+        request = definition
+        if verbosity_override is not None:
+            request = validate_definition(
+                {**definition, "options": {**definition["options"], "verbosity": verbosity_override}}
+            )
         digest = hashlib.sha256(
             json.dumps({"request": request, "task_id": task_id}, sort_keys=True).encode()
         ).hexdigest()
@@ -326,7 +331,7 @@ class RunManager:
                 self.events.publish()
                 return prior
             task = self.store.task(task_id) if task_id else None
-            if task and request != validate_definition(task):
+            if task and definition != validate_definition(task):
                 raise Problem("revision_conflict", "Task changed before execution; reload and retry", 409)
             known = {c.get("nodeid") for c in self._collect()}
             if self.closed:
@@ -416,14 +421,14 @@ class RunManager:
                     if self.cancel.is_set():
                         changes.update(state="cancelled", outcome="unknown")
                     else:
-                        # Direct file output is memory-bounded even for a single enormous line.
-                        proc = launch_pytest(cmd, self.context.root, stdout=log, env=env)
+                        # Drain bytes as they arrive; never wait for a newline or file watcher.
+                        proc = launch_pytest(cmd, self.context.root, stdout=subprocess.PIPE, env=env)
                         self.process = proc
                         atomic_json(directory / "process.json", {"pid": proc.pid})
                         self.store.update_run(run_id, dict(state="running", pid=proc.pid))
                         self.events.publish()
                 if proc:
-                    code = proc.wait()
+                    code = self._stream_output(proc, log)
                     changes.update(
                         exit_code=code,
                         state="cancelled" if self.cancel.is_set() else ("completed" if code in (0, 1) else "error"),
@@ -475,6 +480,35 @@ class RunManager:
                     self.active_id = None
                 self.operation.release()
                 self.events.publish()
+
+    def _stream_output(self, proc, log):
+        errors = []
+
+        def drain():
+            try:
+                while chunk := os.read(proc.stdout.fileno(), 65536):
+                    log.write(chunk)
+                    self.events.publish()
+            except Exception as exc:
+                errors.append(exc)
+                self._terminate(proc)
+            finally:
+                proc.stdout.close()
+
+        reader = threading.Thread(target=drain, name="lounger-log-stream", daemon=True)
+        reader.start()
+        code = proc.wait()
+        reader.join(timeout=2)
+        if reader.is_alive():
+            # A descendant may keep stdout open after pytest exits. Stop the owned
+            # process group rather than hanging finalization waiting for pipe EOF.
+            self._terminate(proc)
+            reader.join(timeout=5)
+        if reader.is_alive():
+            raise RuntimeError("Test output pipe did not close after process termination")
+        if errors:
+            raise RuntimeError(f"Could not persist test output: {errors[0]}")
+        return code
 
     _terminate = staticmethod(terminate_pytest)
 
