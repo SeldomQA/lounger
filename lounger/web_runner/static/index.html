@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>lounger Test Runner</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+CiAgPHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiByeD0iNiIgZmlsbD0iIzFlMWUyZSIvPgogIDxwYXRoIGQ9Ik0xMiA2aDh2MmgtMXYxMGwzIDcuNWMuNCAxLS4yIDIuMi0xLjMgMi41aC05LjRjLTEuMS0uMy0xLjctMS41LTEuMy0yLjVMMTMgMThWOGgtMVY2eiIgZmlsbD0iIzg5YjRmYSIgb3BhY2l0eT0iMC45Ii8+CiAgPGVsbGlwc2UgY3g9IjE2IiBjeT0iMjQiIHJ4PSI0IiByeT0iMiIgZmlsbD0iI2E2ZTNhMSIgb3BhY2l0eT0iMC42Ii8+CiAgPGNpcmNsZSBjeD0iMTQuNSIgY3k9IjIyIiByPSIwLjgiIGZpbGw9IiNhNmUzYTEiIG9wYWNpdHk9IjAuOCIvPgogIDxjaXJjbGUgY3g9IjE3IiBjeT0iMjMuNSIgcj0iMC41IiBmaWxsPSIjYTZlM2ExIiBvcGFjaXR5PSIwLjciLz4KPC9zdmc+">
+<script>
+// Restore before the first paint; retain the existing dark theme by default.
+try { document.documentElement.dataset.theme = localStorage.getItem('lounger.webRunner.theme') === 'light' ? 'light' : 'dark'; }
+catch (_) { document.documentElement.dataset.theme = 'dark'; }
+</script>
+<link rel="stylesheet" href="/static/runner.css">
+<link rel="stylesheet" href="/static/platform.css">
+</head>
+<body>
+
+<div class="sidebar-shell" id="sidebarShell">
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <span class="logo">🧪</span>
+      <h1>lounger Test Runner</h1>
+      <button id="themeToggle" class="theme-switch" type="button" role="switch" aria-label="夜间模式" aria-checked="true" title="切换到白天模式">
+        <span class="theme-thumb" aria-hidden="true">
+          <svg class="theme-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg>
+          <svg class="theme-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M19.8 15.4A8.5 8.5 0 0 1 8.6 4.2a8.5 8.5 0 1 0 11.2 11.2Z"/></svg>
+        </span>
+      </button>
+    </div>
+    <div style="padding:8px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+      <span id="caseStats" style="font-size:12px;color:var(--muted)">📊 加载中...</span>
+      <button class="btn btn-outline" onclick="refreshCases()" style="font-size:12px">🔄 刷新用例列表</button>
+    </div>
+    <div class="toolbar">
+      <input type="text" id="search" placeholder="搜索用例名称..." oninput="filterCases()">
+      <button class="btn btn-outline" onclick="selectAll()">全选</button>
+      <button class="btn btn-outline" onclick="deselectAll()">取消</button>
+    </div>
+    <div class="toolbar">
+      <button class="btn btn-green" onclick="runSelected()" id="runSelectedBtn" style="flex:1">▶ 执行选中</button>
+      <button class="btn btn-accent" onclick="runAll()" id="runAllBtn" style="flex:1">▶▶ 执行全部</button>
+    </div>
+    <!-- tag filter bar -->
+    <div class="tag-bar" id="tagBar"></div>
+    <div class="case-list" id="caseList">
+      <div class="empty-state">⏳ 正在收集用例...</div>
+    </div>
+  </div>
+  <div class="sidebar-resizer" id="sidebarResizer" onmousedown="startSidebarResize(event)"></div>
+</div>
+
+<div class="main">
+  <div class="main-header">
+    <span class="status-dot" id="statusDot"></span>
+    <span id="statusText">就绪</span>
+    <span id="runCounter" style="font-size:12px;color:var(--muted)"></span>
+    <span class="log-notice" id="logNotice"></span>
+    <span style="flex:1"></span>
+    <span id="verbosityGroup" title="本次执行的日志级别，适用于用例执行和运行任务；默认静默" style="display:flex;align-items:center;gap:2px;font-size:12px;color:var(--muted)">
+      <label style="cursor:pointer"><input type="radio" name="verbosity" value="quiet" onclick="setVerbosity('quiet')" checked> 静默</label>
+      <label style="cursor:pointer;margin-left:6px"><input type="radio" name="verbosity" value="normal" onclick="setVerbosity('normal')"> 标准</label>
+      <label style="cursor:pointer;margin-left:6px"><input type="radio" name="verbosity" value="verbose" onclick="setVerbosity('verbose')"> 详细</label>
+      <label style="cursor:pointer;margin-left:6px"><input type="radio" name="verbosity" value="full" onclick="setVerbosity('full')"> 完整</label>
+    </span>
+    <label id="reportGroup" title="运行结束后生成 HTML 报告，可在新标签页查看"
+           style="cursor:pointer;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:4px">
+      <input type="checkbox" id="reportToggle" onclick="setReportEnabled(this.checked)"> 📄 生成报告
+    </label>
+    <button class="btn btn-outline" onclick="openReport()" id="reportBtn" style="display:none">📄 查看报告</button>
+    <button class="btn btn-outline" onclick="copyLogs()" id="copyBtn" style="display:none">📋 复制日志</button>
+    <button class="btn btn-outline" onclick="clearLogs()" id="clearBtn" style="display:none">🧹 清空日志</button>
+  </div>
+  <!-- tab bar -->
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('live')" id="tabLive">📺 实时日志</button>
+    <button class="tab-btn" onclick="switchTab('history')" id="tabHistory">📜 历史记录</button>
+  </div>
+  <!-- live log panel -->
+  <div class="tab-panel active" id="panelLive">
+    <div class="log-container" id="logContainer">
+      <div class="log-spacer" id="logSpacer"></div>
+      <div class="log-viewport" id="logViewport"></div>
+    </div>
+  </div>
+  <!-- history panel -->
+  <div class="tab-panel" id="panelHistory">
+    <div class="history-list" id="historyList">
+      <div class="log-placeholder">
+        <div class="icon">📜</div>
+        <div>暂无历史记录</div>
+      </div>
+    </div>
+  </div>
+  <!-- history detail panel -->
+  <div class="tab-panel" id="panelHistoryDetail">
+    <div class="history-detail">
+      <div class="history-detail-header">
+        <button class="btn btn-outline btn-sm" onclick="backToHistory()">← 返回列表</button>
+        <span id="historyDetailTitle" style="font-weight:500"></span>
+        <span style="flex:1"></span>
+        <button class="btn btn-outline btn-sm" onclick="copyHistoryLogs()" id="copyHistoryBtn">📋 复制</button>
+        <button class="btn btn-outline btn-sm" onclick="openHistoryReport()" id="historyReportBtn" style="display:none">📄 查看报告</button>
+      </div>
+      <div class="log-container" id="historyLogContainer">
+        <div class="log-spacer" id="historyLogSpacer"></div>
+        <div class="log-viewport" id="historyLogViewport"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/static/runner.js"></script>
+<script src="/static/platform.js"></script>
+</body>
+</html>
