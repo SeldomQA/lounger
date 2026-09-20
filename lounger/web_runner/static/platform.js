@@ -287,12 +287,17 @@ async function loadHistory(){
   const filters=new URLSearchParams({page:runPage});for(const [key,id] of [['task_id','taskFilter'],['state','stateFilter'],['outcome','outcomeFilter'],['date_from','dateFrom'],['date_to','dateTo']])if($(id).value)filters.set(key,$(id).value);
   const route=filters.toString();$('historyList').classList.remove('is-empty');$('historyList').replaceChildren(el('p','loading','正在加载执行记录…'));
   const [data,taskData]=await Promise.all([api('runs?'+route),api('tasks?page_size=100')]);if(currentView!=='runs'||generation!==historyVersion)return;
+  const lastPage=Math.max(1,Math.ceil(data.total/data.page_size));if(runPage>lastPage){runPage=lastPage;return loadHistory();}
   for(const task of taskData.items)if(![...$('taskFilter').options].some(o=>o.value===task.id))$('taskFilter').add(new Option(task.name,task.id));
   const host=$('historyList');host.replaceChildren();if(!data.items.length){empty(host,'没有执行记录','调整筛选条件，或从用例、任务页面发起一次执行。');pager('runPager',data,()=>{});return;}
   const grid=table(['任务 / 执行','结果','用例统计','开始时间','耗时','']);
   for(const run of data.items){const row=el('tr');row.dataset.runId=run.id;const title=el('div');title.append(button(run.task_name_snapshot||'临时执行',()=>navigate('run',run.id),'text-button'),el('p','muted',`#${run.id.slice(0,8)} · ${run.request.selection.nodeids.length} 条选中用例`));
     const counts=el('div','count-inline');for(const [key,label] of [['passed','通过'],['failed','失败'],['error','错误']])counts.append(el('span',key,`${label} ${run.counts?.[key]??'—'}`));
-    row.append(makeCell(title),makeCell(runBadge(run)),makeCell(counts),makeCell(fmtDate(run.started_at),'nowrap'),makeCell(duration(run.duration_ms),'nowrap'),makeCell(button(terminal.has(run.state)?'查看详情':'查看执行',()=>navigate('run',run.id),'text-button')));grid.tBodies[0].append(row);
+    const actions=el('div','button-row');
+    const remove=button('删除',async()=>{if(await confirmAction('删除这次执行？','执行记录、日志和报告将一起删除，任务定义不受影响。')){await api('runs/'+run.id,{method:'DELETE'});if(liveRunId===run.id)liveRunId=null;await loadHistory();}},'btn-danger');
+    remove.disabled=!terminal.has(run.state);if(remove.disabled)remove.title='执行结束后可删除';
+    actions.append(button(terminal.has(run.state)?'查看详情':'查看执行',()=>navigate('run',run.id),'text-button'),remove);
+    row.append(makeCell(title),makeCell(runBadge(run)),makeCell(counts),makeCell(fmtDate(run.started_at),'nowrap'),makeCell(duration(run.duration_ms),'nowrap'),makeCell(actions));grid.tBodies[0].append(row);
   }host.append(grid);pager('runPager',data,async page=>{runPage=page;await loadHistory();});
 }
 async function viewHistoryRun(id,preferLogs=false){
