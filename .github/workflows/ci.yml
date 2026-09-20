@@ -37,4 +37,16 @@ jobs:
       - name: Install chromium
         run: playwright install --with-deps chromium
       - name: Playwright smoke test
-        run: pytest tests/test_playwright_smoke.py -q
+        run: pytest tests/test_playwright_smoke.py tests/test_runner_platform_browser.py -q
+
+  runner-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install runner test dependencies
+        run: pip install -e ".[dev]"
+      - name: Runner lifecycle and HTTP regression
+        run: pytest tests/test_runner_platform.py tests/test_runner_platform_api.py -q
