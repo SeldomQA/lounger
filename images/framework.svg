@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1536" height="980" viewBox="0 0 1536 980">
+<rect x="0" y="0" width="1536" height="980" rx="28" fill="#091323" stroke="none" stroke-width="1"/>
+<rect x="48" y="42" width="12" height="56" rx="4" fill="#27D3EA" stroke="none" stroke-width="1"/>
+<rect x="66" y="54" width="12" height="44" rx="4" fill="#9E99FF" stroke="none" stroke-width="1"/>
+<rect x="84" y="66" width="12" height="32" rx="4" fill="#35D4A0" stroke="none" stroke-width="1"/>
+<text x="116" y="63.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="44" font-weight="600" fill="#E5EFFC">lounger</text>
+<text x="118" y="111.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="19" font-weight="400" fill="#94ABC5">自动化测试框架 · 架构总览</text>
+<rect x="1266" y="52" width="222" height="42" rx="21" fill="#0E1D30" stroke="#29425D" stroke-width="1"/>
+<text x="1377.0" y="72.0" dominant-baseline="central" text-anchor="middle" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="13" font-weight="600" fill="#27D3EA">PYTEST  ECOSYSTEM</text>
+<rect x="48" y="164" width="1440" height="262" rx="20" fill="#0E1D30" stroke="#27D3EA" stroke-width="2"/>
+<text x="72" y="199.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="16" font-weight="600" fill="#27D3EA">01</text>
+<text x="120" y="199.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="25" font-weight="600" fill="#E5EFFC">内置能力</text>
+<text x="1460" y="201.0" dominant-baseline="central" text-anchor="end" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="13" font-weight="600" fill="#27D3EA">BUILT-IN CAPABILITIES</text>
+<rect x="72" y="234" width="326" height="76" rx="12" fill="#12253B" stroke="#29425D" stroke-width="1"/>
+<text x="92" y="259.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="20" font-weight="600" fill="#E5EFFC">数据驱动</text>
+<text x="92" y="287.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="15" font-weight="400" fill="#94ABC5">YAML / JSON / Excel</text>
+<rect x="422" y="234" width="326" height="76" rx="12" fill="#12253B" stroke="#29425D" stroke-width="1"/>
+<text x="442" y="259.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="20" font-weight="600" fill="#E5EFFC">项目脚手架</text>
+<text x="442" y="287.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="15" font-weight="400" fill="#94ABC5">API / Web 项目模板</text>
+<rect x="772" y="234" width="326" height="76" rx="12" fill="#12253B" stroke="#29425D" stroke-width="1"/>
+<text x="792" y="259.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="20" font-weight="600" fill="#E5EFFC">数据库操作</text>
+<text x="792" y="287.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="15" font-weight="400" fill="#94ABC5">多数据库支持 · 按需安装</text>
+<rect x="1122" y="234" width="326" height="76" rx="12" fill="#12253B" stroke="#29425D" stroke-width="1"/>
+<text x="1142" y="259.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="20" font-weight="600" fill="#E5EFFC">消息通知</text>
+<text x="1142" y="287.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="15" font-weight="400" fill="#94ABC5">测试结果与消息发送</text>
+<rect x="72" y="326" width="326" height="76" rx="12" fill="#12253B" stroke="#29425D" stroke-width="1"/>
+<text x="92" y="351.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="20" font-weight="600" fill="#E5EFFC">缓存管理</text>
+<text x="92" y="379.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="15" font-weight="400" fill="#94ABC5">跨用例数据复用</text>
+<rect x="422" y="326" width="326" height="76" rx="12" fill="#12253B" stroke="#29425D" stroke-width="1"/>
+<text x="442" y="351.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="20" font-weight="600" fill="#E5EFFC">随机数据</text>
+<text x="442" y="379.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="15" font-weight="400" fill="#94ABC5">测试数据生成</text>
+<rect x="772" y="326" width="326" height="76" rx="12" fill="#12253B" stroke="#29425D" stroke-width="1"/>
+<text x="792" y="351.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="20" font-weight="600" fill="#E5EFFC">环境配置</text>
+<text x="792" y="379.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="15" font-weight="400" fill="#94ABC5">多环境变量管理</text>
+<rect x="1122" y="326" width="326" height="76" rx="12" fill="#12253B" stroke="#29425D" stroke-width="1"/>
+<text x="1142" y="351.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="20" font-weight="600" fill="#E5EFFC">实用工具</text>
+<text x="1142" y="379.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="15" font-weight="400" fill="#94ABC5">断言辅助与通用工具</text>
+<rect x="766" y="435" width="4" height="12" rx="0" fill="#27D3EA" stroke="none" stroke-width="1"/>
+<path d="M 760 445 L 776 445 L 768 454 Z" fill="#27D3EA"/>
+<rect x="48" y="466" width="1440" height="300" rx="20" fill="#0E1D30" stroke="#29425D" stroke-width="1"/>
+<text x="72" y="500.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="16" font-weight="600" fill="#9E99FF">02</text>
+<text x="120" y="500.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="25" font-weight="600" fill="#E5EFFC">生态集成</text>
+<text x="1460" y="502.0" dominant-baseline="central" text-anchor="end" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="13" font-weight="600" fill="#9E99FF">PLUGINS &amp; TOOLS</text>
+<text x="72" y="551.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="16" font-weight="600" fill="#94ABC5">自研插件与工具</text>
+<rect x="256" y="530" width="278" height="76" rx="12" fill="#12253B" stroke="#29425D" stroke-width="1"/>
+<text x="276" y="555.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="20" font-weight="600" fill="#27D3EA">pytest-req</text>
+<text x="276" y="583.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="15" font-weight="400" fill="#94ABC5">HTTP 请求与断言</text>
+<rect x="558" y="530" width="278" height="76" rx="12" fill="#12253B" stroke="#29425D" stroke-width="1"/>
+<text x="578" y="555.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="20" font-weight="600" fill="#27D3EA">pytest-xhtml</text>
+<text x="578" y="583.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="15" font-weight="400" fill="#94ABC5">HTML 测试报告</text>
+<rect x="860" y="530" width="278" height="76" rx="12" fill="#12253B" stroke="#29425D" stroke-width="1"/>
+<text x="880" y="555.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="20" font-weight="600" fill="#27D3EA">auto-wing</text>
+<text x="880" y="583.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="15" font-weight="400" fill="#94ABC5">AI 自动化 · 按需安装</text>
+<rect x="1162" y="530" width="278" height="76" rx="12" fill="#12253B" stroke="#29425D" stroke-width="1"/>
+<text x="1182" y="555.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="20" font-weight="600" fill="#27D3EA">Web Runner</text>
+<text x="1182" y="583.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="15" font-weight="400" fill="#94ABC5">用例 / 任务 / 日志 / 历史</text>
+<text x="72" y="661.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="16" font-weight="600" fill="#94ABC5">第三方插件</text>
+<rect x="256" y="640" width="378" height="76" rx="12" fill="#12253B" stroke="#29425D" stroke-width="1"/>
+<text x="276" y="665.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="20" font-weight="600" fill="#9E99FF">pytest-playwright</text>
+<text x="276" y="693.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="15" font-weight="400" fill="#94ABC5">Web UI 自动化 · 按需安装</text>
+<rect x="659" y="640" width="378" height="76" rx="12" fill="#12253B" stroke="#29425D" stroke-width="1"/>
+<text x="679" y="665.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="20" font-weight="600" fill="#9E99FF">pytest-rerunfailures</text>
+<text x="679" y="693.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="15" font-weight="400" fill="#94ABC5">失败重试</text>
+<rect x="1062" y="640" width="378" height="76" rx="12" fill="#12253B" stroke="#29425D" stroke-width="1"/>
+<text x="1082" y="665.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="20" font-weight="600" fill="#9E99FF">pytest-xdist</text>
+<text x="1082" y="693.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="15" font-weight="400" fill="#94ABC5">并发执行 · 按需安装</text>
+<rect x="766" y="776" width="4" height="12" rx="0" fill="#27D3EA" stroke="none" stroke-width="1"/>
+<path d="M 760 786 L 776 786 L 768 795 Z" fill="#27D3EA"/>
+<rect x="48" y="808" width="1440" height="94" rx="18" fill="#0E292F" stroke="#277366" stroke-width="1"/>
+<text x="72" y="854.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="16" font-weight="600" fill="#35D4A0">03</text>
+<text x="120" y="852.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="34" font-weight="600" fill="#E5EFFC">pytest</text>
+<text x="432" y="855.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="21" font-weight="600" fill="#35D4A0">测试执行底座</text>
+<text x="1448" y="855.0" dominant-baseline="central" text-anchor="end" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="18" font-weight="400" fill="#E5EFFC">用例发现   ·   Fixtures   ·   参数化   ·   插件机制   ·   执行生命周期</text>
+<text x="48" y="943.0" dominant-baseline="central" text-anchor="start" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="17" font-weight="400" fill="#94ABC5">从用例编写到执行反馈，一套框架贯通 API、Web 与 AI 自动化。</text>
+<text x="1488" y="943.0" dominant-baseline="central" text-anchor="end" font-family="PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="13" font-weight="600" fill="#94ABC5">LOUNGER / 1.7</text>
+</svg>
