@@ -144,11 +144,12 @@ class Store:
 
     def legacy_id(self, old_id):
         """Resolve bookmarked pre-SQLite URLs without resurrecting deleted imports."""
+        key = f"reports/runs/{old_id}.json"
         with self.connection() as db:
             row = db.execute(
                 "SELECT runs.id FROM legacy_imports JOIN runs ON runs.id=legacy_imports.run_id "
-                "WHERE legacy_imports.source_key=?",
-                (f"reports/runs/{old_id}.json",),
+                "WHERE legacy_imports.source_key IN (?, ?)",
+                (key, key.replace("/", "\\")),
             ).fetchone()
         return row[0] if row else old_id
 

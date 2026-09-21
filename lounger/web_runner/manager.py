@@ -643,9 +643,12 @@ class RunManager:
         from datetime import datetime, timezone
 
         for path in sorted((self.context.root / "reports" / "runs").glob("*.json")):
-            key = str(path.relative_to(self.context.root))
+            key = path.relative_to(self.context.root).as_posix()
             with self.store.connection() as db:
-                if db.execute("SELECT 1 FROM legacy_imports WHERE source_key=?", (key,)).fetchone():
+                # Older Windows imports used native backslashes in persisted keys.
+                if db.execute(
+                    "SELECT 1 FROM legacy_imports WHERE source_key IN (?, ?)", (key, key.replace("/", "\\"))
+                ).fetchone():
                     continue
             try:
                 raw = path.read_bytes()

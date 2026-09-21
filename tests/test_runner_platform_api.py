@@ -124,15 +124,26 @@ def test_packaged_static_resources(http):
     assert call("/static/../manager.py")[0] == 404
 
 
-def test_old_history_bookmarks_resolve_after_import(http):
+@pytest.mark.parametrize("stored_separator", ["/", "\\"])
+def test_old_history_bookmarks_resolve_after_import(http, stored_separator):
     call, manager, _ = http
     directory = manager.context.root / "reports" / "runs"
     directory.mkdir(parents=True)
     (directory / "old123.json").write_text(json.dumps({"status": "completed", "logs": ["old log\n"], "nodeids": []}))
     manager._import_legacy()
+    with manager.store.connection() as db:
+        key = db.execute("SELECT source_key FROM legacy_imports").fetchone()[0]
+        assert key == "reports/runs/old123.json"
+        db.execute("UPDATE legacy_imports SET source_key=?", (key.replace("/", stored_separator),))
+    manager._import_legacy()
+    assert manager.store.runs()["total"] == 1
+    with manager.store.connection() as db:
+        assert db.execute("SELECT COUNT(*) FROM legacy_imports").fetchone()[0] == 1
     status, data = call("/api/history/old123")
     assert status == 200 and data["logs"] == ["old log\n"]
     assert call("/api/history/old123", "DELETE")[0] == 200
+    manager._import_legacy()
+    assert manager.store.runs()["total"] == 0
     assert call("/api/history/old123")[0] == 404
 
 
