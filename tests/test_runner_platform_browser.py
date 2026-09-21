@@ -158,7 +158,8 @@ def test_monitoring_does_not_steal_navigation(workbench):
 
 
 @pytest.mark.integration
-def test_large_log_tail_search_and_load_earlier(workbench):
+@pytest.mark.parametrize("delayed_startup", [False, True])
+def test_large_log_tail_search_and_load_earlier(workbench, delayed_startup):
     from playwright.sync_api import expect
 
     from lounger.web_runner.storage import now
@@ -182,6 +183,10 @@ def test_large_log_tail_search_and_load_earlier(workbench):
     directory.mkdir(parents=True)
     content = "起始标记 START\n" + "中文日志内容 " * 5000 + "\n结束标记 END\n"
     (directory / "output.log").write_text(content, encoding="utf-8")
+    pending_collection = []
+    if delayed_startup:
+        page.route("**/api/v1/cases/tree", lambda route: pending_collection.append(route))
+        page.reload()
     page.get_by_role("button", name="历史记录", exact=True).click()
     page.get_by_role("button", name="查看详情", exact=True).click()
     page.get_by_role("button", name="执行日志", exact=True).click()
@@ -211,6 +216,12 @@ def test_large_log_tail_search_and_load_earlier(workbench):
     expect(page.locator("#copyFeedback")).to_contain_text("复制失败")
     expect(page.locator("#copyLog")).to_have_text("复制可见日志")
     expect(page.locator("#copyLog")).to_be_enabled()
+    if delayed_startup:
+        assert len(pending_collection) == 1
+        with page.expect_request("**/api/v1/project/events"):
+            pending_collection[0].fulfill(json={"flat": [], "tree": {"children": []}})
+        expect(page.locator("#logSearch")).to_have_value("END")
+        expect(page.locator("#logPane")).to_be_visible()
     page.locator("#earlierLogs").click()
     expect(page.locator("#earlierLogs")).to_be_hidden()
     page.locator("#logSearch").fill("START")

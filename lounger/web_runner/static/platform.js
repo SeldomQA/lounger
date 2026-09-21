@@ -11,6 +11,7 @@ const stateNames = {starting:'准备中',running:'运行中',finalizing:'整理�
 const outcomeNames = {passed:'通过',failed:'失败',error:'错误',skipped:'跳过',unknown:'未知'};
 const validationNames = {valid:'用例有效',invalid:'需要修复',unknown:'未能校验',checking:'正在检查'};
 let projectInfo = null, projectBusy = true, currentView = 'cases', taskPage = 1, runPage = 1;
+let routeInitialized = false;
 let tasks = [], validations = new Map(), taskLoadVersion = 0, detailVersion = 0, editorVersion = 0;
 let editingTask = null, editorCases = [], editorSelected = new Set(), editorReady = false, editorTree = null, editorRemoved = 0, pickerExpanded = new Set(), pickerSearchExpanded = new Map();
 let detailRun = null, detailTab = 'results', resultPage = 1, logText = '', logStart = 0, logCursor = 0, logLoading = false;
@@ -130,6 +131,7 @@ logContainer.addEventListener('scroll',()=>{clearTimeout(scrollTimer);scrollTime
 },120);});
 
 function navigate(view, id=null, updateHash=true) {
+  routeInitialized=true;
   if(view==='cases'&&(projectInfo?.active_run_id||liveRunId)){id=projectInfo?.active_run_id||liveRunId;view='run';}
   currentView=view;
   for(const [name,node] of Object.entries({cases:'viewCases',tasks:'viewTasks',runs:'viewRuns',run:'viewRun'}))$(node).hidden=name!==view;
@@ -391,5 +393,8 @@ refreshCases=()=>loadCases(true);
 (async()=>{
   await updateRunStatus();if(projectInfo){try{for(const key of [EXPANDED_NODES_KEY,SIDEBAR_WIDTH_KEY,FAVORITES_KEY,REPORT_ENABLED_KEY])if(localStorage.getItem(key+'.'+projectInfo.id)===null&&localStorage.getItem(key)!==null)localStorage.setItem(key+'.'+projectInfo.id,localStorage.getItem(key));}catch(_){}
     EXPANDED_NODES_KEY+='.'+projectInfo.id;SIDEBAR_WIDTH_KEY+='.'+projectInfo.id;FAVORITES_KEY+='.'+projectInfo.id;REPORT_ENABLED_KEY+='.'+projectInfo.id;expandedNodes=loadExpandedNodes();favorites=loadFavorites();reportEnabled=loadReportEnabled();$('reportToggle').checked=reportEnabled;}
-  applySidebarWidth(loadSidebarWidth());await loadCases();restoreRoute();connectProjectEvents();
+  applySidebarWidth(loadSidebarWidth());await loadCases();
+  // Initial collection may finish after the user has already navigated.
+  if(!routeInitialized)restoreRoute();
+  connectProjectEvents();
 })().catch(notice);
