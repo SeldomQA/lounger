@@ -24,6 +24,7 @@ dependencies = [
     "pytest-rerunfailures>=14.0,<15.0",
     "python-dateutil>=2.8.2,<3.0.0",
     "centrifuge-python>=0.4.1,<0.5.0",
+    "watchdog>=6.0.0,<7.0.0"
 ]
 
 [project.optional-dependencies]
