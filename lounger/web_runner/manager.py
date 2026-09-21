@@ -96,7 +96,7 @@ class RunManager:
             self.blocked: list[dict] = []
             self.warnings: list[str] = []
             self.cache: list[dict] | None = None
-            self.cache_time = 0.0
+            self.cache_time: float | None = None
             self._recover()
             self._import_legacy()
         except Exception:
@@ -111,7 +111,7 @@ class RunManager:
 
     def sources_changed(self):
         with self.events.condition:
-            self.cache_time = 0
+            self.cache_time = None
             self.events.publish(source=True)
 
     def project(self):
@@ -231,8 +231,14 @@ class RunManager:
     def cases(self, refresh=False):
         if self.closed:
             raise Problem("shutting_down", "Runner is shutting down", 503)
-        if not refresh and self.cache is not None and time.monotonic() - self.cache_time < 300:
-            return self.cache
+        with self.events.condition:
+            if (
+                not refresh
+                and self.cache is not None
+                and self.cache_time is not None
+                and time.monotonic() - self.cache_time < 300
+            ):
+                return self.cache
         if not self.operation.acquire(blocking=False):
             if not refresh and self.cache is not None:
                 return self.cache
@@ -250,7 +256,7 @@ class RunManager:
         if not isinstance(cases, list) or any(not isinstance(c, dict) or "error" in c for c in cases):
             raise Problem("collection_failed", str(cases), 400)
         with self.events.condition:
-            self.cache, self.cache_time = cases, time.monotonic() if revision == self.events.sources else 0
+            self.cache, self.cache_time = cases, time.monotonic() if revision == self.events.sources else None
         return cases
 
     def validate_tasks(self, task_ids):
@@ -412,7 +418,7 @@ class RunManager:
             cmd = build_pytest_command(run_id, targets, options["verbosity"], html, override)
             cmd[0] = self.context.python
             cmd.extend([f"--junit-xml={directory / 'junit.xml'}", "-o", "junit_logging=all"])
-            env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+            env = {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"}
             # PYTEST_ADDOPTS can also request HTML output; obey the UI toggle there.
             if not html and env.get("PYTEST_ADDOPTS"):
                 env["PYTEST_ADDOPTS"] = without_html_addopts(env["PYTEST_ADDOPTS"])
@@ -649,7 +655,7 @@ class RunManager:
                 run_id = uuid.uuid5(uuid.UUID(self.store.project_id), key).hex
                 directory = self.directory(run_id)
                 directory.mkdir(parents=True, exist_ok=True)
-                (directory / "output.log").write_text("".join(old.get("logs", [])), encoding="utf-8")
+                (directory / "output.log").write_bytes("".join(old.get("logs", [])).encode("utf-8"))
                 started = old.get("started_at") or path.stat().st_mtime
                 item = dict(
                     id=run_id,

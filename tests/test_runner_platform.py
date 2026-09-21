@@ -208,11 +208,12 @@ def test_multiple_nested_suites_and_unknown_nodeid(tmp_path):
     assert rows[0]["duration_ms"] == 100
 
 
-def test_legacy_import_is_idempotent_and_bad_file_is_visible(tmp_path):
+@pytest.mark.parametrize("log_text", ["hello\n", "你好\r\n第二行\n"])
+def test_legacy_import_is_idempotent_and_bad_file_is_visible(tmp_path, log_text):
     directory = tmp_path / "reports" / "runs"
     directory.mkdir(parents=True)
     (directory / "old.json").write_text(
-        json.dumps(dict(status="completed", exit_code=0, logs=["hello\n"], nodeids=["a"]))
+        json.dumps(dict(status="completed", exit_code=0, logs=[log_text], nodeids=["a"]))
     )
     (directory / "bad.json").write_text("{bad")
     context = ProjectContext.create(str(tmp_path))
@@ -220,7 +221,8 @@ def test_legacy_import_is_idempotent_and_bad_file_is_visible(tmp_path):
     assert one.store.runs()["total"] == 1
     assert one.warnings
     run_id = one.store.runs()["items"][0]["id"]
-    assert one.logs(run_id)["text"] == "hello\n"
+    assert one.logs(run_id)["text"] == log_text
+    assert (one.directory(run_id) / "output.log").read_bytes() == log_text.encode("utf-8")
     one.close()
     two = RunManager(context)
     try:
@@ -498,13 +500,14 @@ def test_task_validation_collects_once_and_never_rewrites_task(manager):
         manager.operation.release()
 
 
-def test_log_tail_and_backward_windows_reconstruct_utf8(manager):
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_log_tail_and_backward_windows_reconstruct_utf8(manager, newline):
     rid = "f" * 32
     manager.store.create_run(dict(id=rid, state="completed", started_at=now(), request=request()))
     directory = manager.directory(rid)
     directory.mkdir(parents=True)
-    text = "第一行\n第二行\n" * 9000
-    (directory / "output.log").write_text(text, encoding="utf-8")
+    text = f"第一行{newline}第二行{newline}" * 9000
+    (directory / "output.log").write_bytes(text.encode("utf-8"))
     batch = manager.log_window(rid, tail=True, limit=65536)
     reconstructed = batch["text"]
     assert batch["start"] > 0 and batch["cursor"] == len(text.encode())
@@ -528,16 +531,32 @@ def test_task_search_and_latest_run_summary(manager):
     assert manager.store.tasks(search="absent")["total"] == 0
 
 
-def test_source_change_during_collection_keeps_cache_invalid(manager):
+@pytest.mark.parametrize("clock", [0.0, 60.0, 600.0])
+def test_source_change_invalidates_cache_regardless_of_clock_origin(manager, monkeypatch, clock):
+    monkeypatch.setattr("lounger.web_runner.manager.time.monotonic", lambda: clock)
+    original = manager.cases()
+    renamed = [{"nodeid": "test_sample.py::test_renamed"}]
+    manager.collector = lambda root: renamed
+    assert manager.cases() == original
+    manager.sources_changed()
+    assert manager.cases() == renamed
+
+
+def test_source_change_during_collection_keeps_cache_invalid(manager, monkeypatch):
+    monkeypatch.setattr("lounger.web_runner.manager.time.monotonic", lambda: 60.0)
+
     def collect(root):
         manager.sources_changed()
         return [{"nodeid": "test_sample.py::test_ok"}]
 
     manager.collector = collect
     manager.cases(refresh=True)
-    assert manager.cache_time == 0
+    assert manager.cache_time is None
     assert manager.project()["sources_revision"] == 1
     assert not manager.project()["busy"]
+    renamed = [{"nodeid": "test_sample.py::test_renamed"}]
+    manager.collector = lambda root: renamed
+    assert manager.cases() == renamed
 
 
 def test_quiet_overrides_project_and_environment_logging_but_keeps_failure(manager, monkeypatch):
@@ -556,7 +575,7 @@ def test_quiet_overrides_project_and_environment_logging_but_keeps_failure(manag
     task = manager.store.save_task(validate_definition({**request(), "name": "legacy verbose task"}, task=True))
     run = manager.start(task, task["id"], verbosity_override="quiet")
     wait(manager)
-    output = (manager.directory(run["id"]) / "output.log").read_text()
+    output = (manager.directory(run["id"]) / "output.log").read_text(encoding="utf-8")
     assert "SUCCESS_OUTPUT_MUST_BE_CAPTURED" not in output
     assert "SUCCESS_LOG_MUST_BE_CAPTURED" not in output
     assert "PASSED" not in output
@@ -564,5 +583,5 @@ def test_quiet_overrides_project_and_environment_logging_but_keeps_failure(manag
     assert run["request"]["options"]["verbosity"] == "quiet"
     failed = manager.start({**request(["test_sample.py::test_bad"]), "options": {"verbosity": "quiet"}})
     wait(manager)
-    assert "FAILURE_REASON_MUST_REMAIN" in (manager.directory(failed["id"]) / "output.log").read_text()
+    assert "FAILURE_REASON_MUST_REMAIN" in (manager.directory(failed["id"]) / "output.log").read_text(encoding="utf-8")
     assert manager.store.run(failed["id"])["outcome"] == "failed"

@@ -18,7 +18,7 @@ from lounger.web_runner.server import _ThreadingHTTPServer
 @pytest.fixture
 def http(tmp_path):
     (tmp_path / "pytest.ini").write_text("[pytest]\n")
-    (tmp_path / "test_demo.py").write_text('def test_ok():\n    print("你好")\n    assert True\n')
+    (tmp_path / "test_demo.py").write_text('def test_ok():\n    print("你好")\n    assert True\n', encoding="utf-8")
     manager = RunManager(ProjectContext.create(str(tmp_path)))
     server = _ThreadingHTTPServer(("127.0.0.1", 0), PlatformHandler)
     server.manager, server.session_token = manager, secrets.token_urlsafe(32)
@@ -82,7 +82,8 @@ def test_task_crud_revision_and_pagination(http):
     assert call(path)[0] == 404
 
 
-def test_execution_stream_results_and_history(http):
+def test_execution_stream_results_and_history(http, monkeypatch):
+    monkeypatch.setenv("PYTHONIOENCODING", "cp1252")
     call, manager, base = http
     status, cases = call("/api/v1/cases/tree")
     assert status == 200 and cases["flat"][0]["nodeid"] == "test_demo.py::test_ok"
