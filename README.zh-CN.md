@@ -1,6 +1,6 @@
 # lounger
 
-**简体中文** | [English](./REAEME.md)
+**简体中文** | [English](./README.md)
 
 ![](./images/logo-no-background.png)
 
