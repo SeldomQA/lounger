@@ -23,8 +23,9 @@ from lounger.web_runner import html
 
 def test_discover_cases_custom_naming_rule(tmp_path, monkeypatch):
     """A project-provided naming rule overrides YAML-case fields."""
+    param_id = "datas/foo.yaml::case_1_step_1"
     collected = [
-        {"nodeid": "test_api.py::test_api[foo::case_1_step_1]", "name": "x", "file": "test_api.py"},
+        {"nodeid": f"test_api.py::test_api[{param_id}]", "name": "x", "file": "test_api.py"},
     ]
 
     def fake_collect(scan_dir, timeout=30):
@@ -32,16 +33,14 @@ def test_discover_cases_custom_naming_rule(tmp_path, monkeypatch):
 
     monkeypatch.setattr(case_discovery, "_collect_via_subprocess", fake_collect)
     monkeypatch.setattr(case_discovery, "_get_yaml_case_metadata", lambda sd: {
-        "foo::case_1_step_1": {"file": "datas/foo.yaml", "name": "自定义名", "description": "desc"},
+        param_id: {"file": "datas/foo.yaml", "name": "自定义名", "description": "desc"},
     })
+    monkeypatch.setattr(case_discovery, "_read_manifest", lambda sd: {})
 
     def my_rule(nodeid, metadata):
-        # pluginized naming rule: extract the param key from the nodeid
-        import re
-        m = re.search(r"\[(.+?)\]$", nodeid)
-        if m and m.group(1) in metadata:
-            return metadata[m.group(1)]
-        return None
+        # pluginized naming rule: extract the parametrize id from the nodeid
+        param_id = nodeid[nodeid.rfind("[") + 1 : -1]
+        return metadata.get(param_id)
 
     cases = case_discovery.discover_cases(str(tmp_path), yaml_naming_rule=my_rule)
 
