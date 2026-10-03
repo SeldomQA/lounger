@@ -91,10 +91,7 @@ class PostgresDB(SQLBase):
         """
         insert sql statement
         """
-        for key in data:
-            data[key] = "'" + str(data[key]) + "'"
-        key = ','.join(data.keys())
-        value = ','.join(data.values())
+        key, value = self.insert_clause(data)
         sql = f"INSERT INTO {table} ({key}) VALUES ({value})"
         self.execute_sql(sql)
 
