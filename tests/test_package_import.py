@@ -17,15 +17,53 @@ interpreter — inside a running pytest session ``pytest_req`` is already import
 by other plugins — so it is asserted with subprocesses; the lazy-export contract
 is asserted in-process.
 """
+import itertools
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import textwrap
 from pathlib import Path
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+#: Fallback scratch root used when the process temp area cannot be enumerated.
+_REPO_SCRATCH = REPO_ROOT / ".run-tmp" / "import-tests"
+_scratch_counter = itertools.count()
+
+
+def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001 - pytest hook signature
+    """
+    Remove this module's scratch directory after the session.
+
+    Sandboxed hosts may deny the removal (the files were created by a restricted
+    token); the leftover is then harmless because ``.run-tmp/`` is ignored by git.
+    """
+    shutil.rmtree(_REPO_SCRATCH.parent, ignore_errors=True)
+
+
+def _probe_workdir(name: str) -> Path:
+    """
+    Create and return a scratch working directory for one probe.
+
+    ``tmp_path`` is avoided on purpose: it depends on pytest's temp-directory
+    factory, which some sandboxed environments cannot use. ``os.makedirs`` is
+    used instead of ``tempfile.mkdtemp`` because the latter creates 0o700
+    directories a restricted token may not be able to write into.
+    """
+    try:
+        candidate = tempfile.mkdtemp(prefix="lounger-import-check-")
+        os.listdir(candidate)
+        shutil.rmtree(candidate, ignore_errors=True)
+        parent = Path(tempfile.gettempdir())
+    except OSError:
+        parent = _REPO_SCRATCH
+    workdir = parent / f"{name}-{os.getpid()}-{next(_scratch_counter)}"
+    workdir.mkdir(parents=True, exist_ok=True)
+    return workdir
 
 
 def _clean_env() -> dict:
@@ -81,9 +119,9 @@ _IDIOM_PROBE = """
 
 # ── side-effect freedom (fresh interpreter) ────────────────────────────────
 
-def test_importing_lounger_does_not_import_pytest_req(tmp_path):
+def test_importing_lounger_does_not_import_pytest_req():
     """``import lounger`` in a fresh interpreter must not import pytest_req."""
-    result = _run_probe(tmp_path / "clean", _BARE_PROBE)
+    result = _run_probe(_probe_workdir("clean"), _BARE_PROBE)
 
     assert result.returncode == 0, f"probe failed:\n{result.stdout}\n{result.stderr}"
     assert "HAS_PYTEST_REQ False" in result.stdout, result.stdout
@@ -91,18 +129,18 @@ def test_importing_lounger_does_not_import_pytest_req(tmp_path):
     assert "HAS_PARAMS False" in result.stdout, result.stdout
 
 
-def test_importing_lounger_creates_no_log_directory(tmp_path):
+def test_importing_lounger_creates_no_log_directory():
     """The old failure mode: a logs directory inferred from the caller frame."""
-    workdir = tmp_path / "no-logs-here"
+    workdir = _probe_workdir("no-logs-here")
     result = _run_probe(workdir, _BARE_PROBE)
 
     assert result.returncode == 0, f"probe failed:\n{result.stdout}\n{result.stderr}"
     assert not (workdir / "logs").exists(), "importing lounger created a logs directory"
 
 
-def test_lazy_exports_still_resolve(tmp_path):
+def test_lazy_exports_still_resolve():
     """Every documented import idiom must keep working."""
-    result = _run_probe(tmp_path / "idioms", _IDIOM_PROBE)
+    result = _run_probe(_probe_workdir("idioms"), _IDIOM_PROBE)
 
     assert result.returncode == 0, f"probe failed:\n{result.stdout}\n{result.stderr}"
     assert "LOG Logger" in result.stdout, result.stdout
@@ -113,7 +151,7 @@ def test_lazy_exports_still_resolve(tmp_path):
     assert "SAME_LOG True" in result.stdout, result.stdout
 
 
-def test_entry_point_plugin_loads_without_error(tmp_path):
+def test_entry_point_plugin_loads_without_error():
     """
     The plugin module must import cleanly.
 
@@ -126,14 +164,13 @@ def test_entry_point_plugin_loads_without_error(tmp_path):
     print("PLUGIN_LOADED", bool(lounger.plugin.__version__))
     print("HAS_LOG_CFG", callable(getattr(lounger.plugin, "_configure_logging", None)))
     """
-    workdir = tmp_path / "plugin-import"
-    result = _run_probe(workdir, code)
+    result = _run_probe(_probe_workdir("plugin-import"), code)
 
     assert result.returncode == 0, f"probe failed:\n{result.stdout}\n{result.stderr}"
     assert "PLUGIN_LOADED True" in result.stdout, result.stdout
 
 
-def test_entry_point_plugin_runs_a_session(tmp_path):
+def test_entry_point_plugin_runs_a_session():
     """
     End-to-end guard for the original symptom: a pytest session that loads
     ``lounger`` through its ``pytest11`` entry point must run a test.
@@ -141,8 +178,7 @@ def test_entry_point_plugin_runs_a_session(tmp_path):
     Autoload is disabled and the plugin plus its hookspec providers are loaded
     explicitly, so the session does not depend on unrelated plugins.
     """
-    workdir = tmp_path / "session"
-    workdir.mkdir()
+    workdir = _probe_workdir("session")
     (workdir / "test_probe.py").write_text("def test_ok():\n    assert True\n", encoding="utf-8")
 
     result = subprocess.run(

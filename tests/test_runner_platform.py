@@ -202,6 +202,7 @@ def test_multiple_nested_suites_and_unknown_nodeid(tmp_path):
     <testsuite><testsuite><testcase name="b"><failure message="bad"/></testcase>
     <testcase name="c"><error>setup</error></testcase><testcase name="d"><skipped/></testcase>
     </testsuite></testsuite></testsuites>""")
+    # Without a manifest there is no nodeid source, so results stay unattributed.
     rows, counts = parse_junit(xml)
     assert counts == dict(passed=1, failed=1, error=1, skipped=1, total=4)
     assert all(row["nodeid"] is None for row in rows)
@@ -248,8 +249,12 @@ def test_run_result_replacement_is_idempotent(manager):
     run = manager.start(request())
     wait(manager)
     results = manager.store.results(run["id"])["items"]
+    # A persisted result must carry the node ID of the selected case, so the UI
+    # can trace it back to the workspace tree (targets.json manifest alignment).
+    assert results[0]["nodeid"] == "test_sample.py::test_ok"
     manager.store.update_run(run["id"], {"state": "completed"}, results)
     assert manager.store.results(run["id"])["total"] == 1
+    assert manager.store.results(run["id"])["items"][0]["nodeid"] == "test_sample.py::test_ok"
     manager.delete(run["id"])
     assert not manager.directory(run["id"]).exists()
     assert manager.store.runs()["total"] == 0
