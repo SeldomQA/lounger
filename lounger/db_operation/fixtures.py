@@ -10,7 +10,7 @@ Usage in a project's ``conftest.py``::
 """
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any, Literal
 
 import pytest
@@ -52,9 +52,29 @@ def _build_mysql_resource_from_kwargs(kwargs: dict) -> Any:
     return build_mysql_resource(source)
 
 
+def _settings_source(key: str) -> Any:
+    """
+    Read one ``build_mysql_resource`` key from ``lounger.settings``.
+
+    ``build_mysql_resource`` uses ``db_*`` keys (``db_host`` / ``db_port`` /
+    ``db_user`` / ``db_password`` / ``db_database`` / ``db_charset``, plus the
+    SSH tunnel keys). This resolver accepts both places a project may keep them:
+    top level in ``config/config.yaml``, or inside the ``global_test_config``
+    node. ``ExtractVar().config`` — the previous default — only ever read the
+    node, so a project that followed the documented top-level layout could not
+    connect at all.
+    """
+    from lounger.settings import settings
+
+    value = settings.get(key)
+    if value is None:
+        value = settings.get(key, node="global_test_config")
+    return value
+
+
 def create_mysql_fixture(
     scope: Literal["session", "package", "module", "class", "function"] = "session",
-    config_source: Callable[[str], Any] | None = None,
+    config_source: Callable[[str], Any] | Mapping[str, Any] | None = None,
     **connection_kwargs,
 ):
     """
@@ -76,7 +96,15 @@ def create_mysql_fixture(
 
        An SSH tunnel is enabled automatically when ``ssh_host`` and
        ``remote_db_host`` are also provided;
-    3. default: ``ExtractVar().config`` (reads ``config/config.yaml``).
+    3. default: ``lounger.settings`` (``config/config.yaml``), reading the
+       ``db_*`` keys either at top level or inside ``global_test_config``::
+
+           # config/config.yaml
+           db_host: 127.0.0.1
+           db_port: 3306
+           db_user: root
+           db_password: secret
+           db_database: guest3
 
     Usage in a project's ``conftest.py``::
 
@@ -92,8 +120,8 @@ def create_mysql_fixture(
 
     :param scope: pytest fixture scope (default ``"session"``).
     :param config_source: callable or mapping used to resolve the connection
-        settings. Defaults to ``ExtractVar().config`` when neither
-        ``config_source`` nor explicit kwargs are given.
+        settings. Defaults to :func:`_settings_source` (``lounger.settings``)
+        when neither ``config_source`` nor explicit kwargs are given.
     :param connection_kwargs: explicit connection kwargs (see item 2 above).
     :return: a pytest fixture named ``mysql_db``.
     """
@@ -101,14 +129,13 @@ def create_mysql_fixture(
     @pytest.fixture(scope=scope)
     def mysql_db():
         from lounger.db_operation.resource import build_mysql_resource
-        from lounger.utils.variables import ExtractVar
 
         if config_source is not None:
             resource = build_mysql_resource(config_source)
         elif connection_kwargs:
             resource = _build_mysql_resource_from_kwargs(connection_kwargs)
         else:
-            resource = build_mysql_resource(ExtractVar().config)
+            resource = build_mysql_resource(_settings_source)
         with resource as db:
             yield db
 
