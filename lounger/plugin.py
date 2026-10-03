@@ -6,12 +6,11 @@ import time
 import types
 from datetime import datetime, timezone
 from io import StringIO
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
 from lounger import __version__
-from lounger.log import log
 from lounger.plugin_hooks import (
     TestRunResult,
     build_test_run_summary,
@@ -20,6 +19,11 @@ from lounger.plugin_hooks import (
     run_after_session_finish,
 )
 from lounger.pytest_extend.screenshot import screenshot_base64
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from loguru import Logger
+
+    log: Logger
 
 LOG_STREAM = StringIO()
 
@@ -39,6 +43,41 @@ logo = rf"""
 /_/\____/\__,_/_/ /_/\__, /\___/_/     
                     /____/             v{__version__}
 """
+
+
+class _LazyLogger:
+    """
+    Logger proxy that imports ``pytest_req``'s logger on first call.
+
+    ``pytest_req.log`` writes into the package directory at import time, which is
+    not writable for an installed distribution; doing that while this module is
+    loaded from the ``pytest11`` entry point used to abort the session with
+    ``PermissionError``. The proxy keeps the module namespace fully initialised
+    (no reliance on module ``__getattr__`` resolution during plugin loading) while
+    the dependency is only touched when a log call actually happens.
+    """
+
+    __slots__ = ()
+
+    @staticmethod
+    def _target():
+        from lounger.log import log as real_log
+
+        return real_log
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._target(), name)
+
+
+#: Module-level logger used by the hooks below.
+log: Any = _LazyLogger()
+
+
+def __getattr__(name: str) -> Any:
+    """Expose ``log`` for ``from lounger.plugin import log`` (e.g. in tests)."""
+    if name == "log":
+        return log
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -219,6 +258,72 @@ def _trigger_after_case_finish(item, report) -> None:
     _case_results.append(result)
     run_after_case_finish(result)
 
+def write_case_manifest(items) -> None:
+    """
+    Record the source file of every YAML-driven case under ``<project>/.lounger``.
+
+    A YAML case's parametrize id already embeds its source file (see
+    :mod:`lounger.case_id`), so consumers can decode it. This manifest makes that
+    attribution exact — it is written from the *collected* items, so it cannot
+    drift from the entry module even if the entry file or function is renamed.
+
+    Best effort by design: a read-only or missing data directory must never fail
+    a test session.
+
+    :param items: Collected pytest items.
+    """
+    from lounger.case_id import case_metadata, decode, param_id_of
+    from lounger.settings import find_config_file
+
+    config_file = find_config_file()
+    project_root = config_file.parent.parent if config_file else None
+    if project_root is None:
+        return
+
+    cases = []
+    for item in items:
+        callspec = getattr(item, "callspec", None)
+        params = getattr(callspec, "params", None)
+        if not isinstance(params, dict):
+            continue
+        # YAML cases arrive through @load_teststeps(), i.e. the parametrize name
+        # used by analyze_cases ("teststeps").
+        case_data = next(
+            (params[key] for key in ("teststeps", "params") if isinstance(params.get(key), dict)),
+            None,
+        )
+        if case_data is None:
+            continue
+        decoded = decode(case_data.get("name", ""))
+        if decoded is None:
+            continue
+        steps = case_data.get("steps")
+        first_step = steps[0] if isinstance(steps, list) and steps else None
+        meta = case_metadata(decoded["file"], decoded["case_no"], first_step)
+        cases.append(
+            {
+                "nodeid": item.nodeid,
+                "params_id": param_id_of(item.nodeid) or meta["params_id"],
+                **meta,
+            }
+        )
+
+    if not cases:
+        return
+
+    data_dir = os.path.join(project_root, ".lounger")
+    payload = {"version": __version__, "cases": cases}
+    try:
+        os.makedirs(data_dir, exist_ok=True)
+        target = os.path.join(data_dir, "cases.json")
+        tmp = target + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=1)
+        os.replace(tmp, target)
+    except OSError as exc:
+        log.debug(f"Case manifest not written ({exc}); YAML attribution falls back to nodeid decoding")
+
+
 def pytest_addoption(parser: Any) -> None:
     """
     Add pytest option
@@ -307,6 +412,8 @@ def pytest_collection_modifyitems(config, items):
                 item._obj = types.MethodType(new_func, func.__self__)
             else:
                 item._obj = new_func
+
+    write_case_manifest(items)
 
     json_path = config.getoption("--run-json")
     if not json_path:

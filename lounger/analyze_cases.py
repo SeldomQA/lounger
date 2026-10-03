@@ -4,8 +4,22 @@ from typing import Any, Dict, List, Optional, Tuple
 import pytest
 import yaml
 
+from lounger.case_id import encode, extract_step_name, normalize_path
 from lounger.commons.load_config import LoadConfig
 from lounger.log import log
+
+
+def relative_case_path(file_path: str, project_root: str) -> str:
+    """
+    Return ``file_path`` relative to ``project_root``, falling back to its name.
+
+    Case ids embed this path, so it stays stable and platform-independent
+    (forward slashes) even when the project is moved.
+    """
+    try:
+        return normalize_path(os.path.relpath(os.path.abspath(file_path), project_root))
+    except ValueError:  # different drive on Windows
+        return normalize_path(os.path.basename(file_path))
 
 
 def read_yaml(yaml_path: str, key: Optional[str] = None) -> Any:
@@ -72,7 +86,9 @@ def load_test_cases() -> List[Tuple[str, List[Dict], str]]:
 
     for file_path in case_paths:
         file_path = os.path.abspath(file_path)
-        filename = os.path.basename(file_path).rsplit(".", 1)[0]
+        # The case id carries the YAML path relative to the project root, so a
+        # consumer can recover the source file without guessing (lounger.case_id).
+        case_relpath = relative_case_path(file_path, project_root)
 
         test_data = read_yaml(file_path)
         if not test_data or not isinstance(test_data, list):
@@ -132,10 +148,11 @@ def load_test_cases() -> List[Tuple[str, List[Dict], str]]:
                     else:
                         continue  # Skip this test case due to load failure
 
-            # Generate test name from first step after merge
-            first_step_after_merge = merged_steps[0] if merged_steps else {"name": "unnamed_step"}
-            step_name = first_step_after_merge.get("name", "step_1")
-            test_name = f"{filename}::case_{idx + 1}_{step_name}"
+            # Generate the case id from the first step after merge. The format
+            # lives in lounger.case_id so this producer and the consumers
+            # (case_discovery, the Web Runner tree) cannot drift apart.
+            first_step_after_merge = merged_steps[0] if merged_steps else None
+            test_name = encode(case_relpath, idx + 1, extract_step_name(first_step_after_merge))
 
             testcases.append((test_name, merged_steps, file_path))
 

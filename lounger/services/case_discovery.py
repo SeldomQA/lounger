@@ -3,7 +3,15 @@ Case discovery — collect test cases and enrich YAML-driven cases.
 
 Shared by the web runner and the platform script (docs/development_plan.md
 §3.8).  Collecting is delegated to a pytest subprocess; the result is
-validated and optionally enriched with YAML case metadata.
+validated and enriched with YAML case metadata.
+
+YAML attribution no longer guesses at the entry module. A YAML case's parametrize
+id embeds its source file (see :mod:`lounger.case_id`), so the source file is
+recovered by *decoding* the node ID. Sources are read, in order of preference:
+
+1. ``<data_dir>/cases.json`` — a manifest the lounger pytest plugin writes during
+   collection (exact ids, no parsing);
+2. the YAML files under ``datas/``, keyed by the same codec.
 
 Errors are returned as structured dicts (``{"error": ...}``) instead of
 printing to stderr, so any front-end can surface them.
@@ -11,15 +19,23 @@ printing to stderr, so any front-end can surface them.
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
 from pathlib import Path
 from typing import Callable
 
-#: Fallback naming rule for YAML-driven parametrized cases when no YAML
-#: metadata matches: ``<file>::<case>(...::case_<n>_...)``
-YAML_NODEID_RE = re.compile(r"^test_api\.py::test_api\[(.+?::case_\d+_.+?)\]$")
+from lounger.case_id import CASE_SUFFIX_RE, decode_nodeid, normalize_path
+
+#: Manifest written by ``lounger.plugin`` during collection, relative to the
+#: project root. Read-only for consumers; absent when collection did not run
+#: through pytest (or the tree is read-only).
+MANIFEST_RELPATH = (".lounger", "cases.json")
+
+#: Identifies a YAML case inside an entry-module parametrize id. Kept for
+#: reference/back-compat; matching itself goes through :func:`lounger.case_id.decode`.
+YAML_CASE_RE = CASE_SUFFIX_RE
 
 #: Pluggable naming rule: ``(nodeid, metadata) -> dict | None``.
 #: Return a dict of case fields (file/name/description) to override, or None
@@ -91,7 +107,7 @@ def discover_cases(
     except OSError as e:
         return {"error": f"Case collection failed: {e}"}
 
-    metadata = _get_yaml_case_metadata(scan_dir)
+    metadata = _load_yaml_case_metadata(scan_dir)
     if metadata:
         rule = yaml_naming_rule or _yaml_metadata_rule
         cases = [_apply_naming_rule(case, metadata, rule) for case in cases]
@@ -108,34 +124,91 @@ def _apply_naming_rule(case: dict, metadata: dict, rule: CaseNamingRule) -> dict
 
 def _yaml_metadata_rule(nodeid: str, metadata: dict) -> dict | None:
     """
-    Default naming rule: look the parametrized nodeid up in YAML metadata.
+    Default naming rule: attribute a YAML case to its source file.
+
+    The node ID is *decoded* (never pattern-guessed), so the entry module and
+    function may be renamed freely.
 
     This is the fallback "generic rule" — projects may pass their own
     ``yaml_naming_rule`` to :func:`discover_cases` to change how YAML cases
     are re-parented to their source files.
     """
-    m = YAML_NODEID_RE.match(nodeid)
-    if not m:
+    decoded = decode_nodeid(nodeid)
+    if decoded is None:
         return None
-    param_key = m.group(1)
-    meta = metadata.get(param_key)
-    if not meta:
-        return None
-    return {
-        "file": meta["file"],
-        "name": meta["name"],
-        "description": meta.get("description"),
-    }
+
+    param_id = nodeid[nodeid.rfind("[") + 1 : -1]
+    meta = metadata.get(param_id) or metadata.get(decoded["file"])
+    if meta and "file" in meta:
+        return {
+            "file": meta["file"],
+            "name": meta.get("name") or decoded["step_name"],
+            "description": meta.get("description"),
+        }
+
+    # The codec recognised the case but no metadata file/entry matches (the YAML
+    # was edited between collection and enrichment): attribute it by the path
+    # encoded in the id rather than silently dropping the attribution.
+    return {"file": decoded["file"], "name": decoded["step_name"]}
 
 
 # ── YAML metadata ─────────────────────────────────────────────────────────
 
+def _load_yaml_case_metadata(scan_dir: str) -> dict:
+    """
+    Return the YAML case metadata of a project, keyed by parametrize id.
+
+    Prefers the manifest written during collection (exact, already aligned with
+    the entry module); falls back to scanning the YAML files with the same codec.
+    """
+    manifest = _read_manifest(scan_dir)
+    return manifest if manifest else _get_yaml_case_metadata(scan_dir)
+
+
+def _read_manifest(scan_dir: str) -> dict:
+    """Read ``<scan_dir>/.lounger/cases.json`` if the plugin produced it."""
+    path = Path(scan_dir).joinpath(*MANIFEST_RELPATH)
+    try:
+        if path.stat().st_size > 16 * 1024 * 1024:
+            return {}
+        with open(path, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError):
+        return {}
+
+    cases = data.get("cases") if isinstance(data, dict) else None
+    if not isinstance(cases, list):
+        return {}
+
+    metadata: dict = {}
+    for entry in cases:
+        if not isinstance(entry, dict):
+            continue
+        params_id = entry.get("params_id")
+        file_rel = entry.get("file")
+        if not isinstance(params_id, str) or not isinstance(file_rel, str):
+            continue
+        metadata[params_id] = {
+            "file": normalize_path(file_rel),
+            "name": entry.get("name") or params_id,
+            "description": entry.get("description") or entry.get("name") or params_id,
+        }
+    return metadata
+
+
 def _get_yaml_case_metadata(scan_dir: str) -> dict:
-    """Parse YAML test case files from datas/ and return a metadata mapping."""
+    """
+    Derive YAML case metadata from the files under ``datas/``.
+
+    Keys are built with :mod:`lounger.case_id`, i.e. exactly what the entry
+    module puts into the parametrize id, so lookup is an exact match.
+    """
     try:
         import yaml
     except ImportError:
         return {}
+
+    from lounger.case_id import case_metadata
 
     scan_path = Path(scan_dir)
     datas_dir = scan_path / "datas"
@@ -156,8 +229,7 @@ def _get_yaml_case_metadata(scan_dir: str) -> dict:
         if not isinstance(data, list):
             continue
 
-        filename = yaml_file.stem
-        rel_path = str(yaml_file.relative_to(scan_path))
+        rel_path = normalize_path(os.path.relpath(yaml_file, scan_path))
 
         for idx, block in enumerate(data):
             if not isinstance(block, dict) or "teststeps" not in block:
@@ -166,19 +238,11 @@ def _get_yaml_case_metadata(scan_dir: str) -> dict:
             if not isinstance(steps, list) or len(steps) == 0:
                 continue
 
-            first_step = steps[0]
-            display_name = (
-                first_step.get("step")
-                or first_step.get("name")
-                or f"测试用例 {idx + 1}"
-            )
-            step_name = first_step.get("name") or "step_1"
-            case_id = f"{filename}::case_{idx + 1}_{step_name}"
-
-            metadata[case_id] = {
-                "file": rel_path,
-                "name": display_name,
-                "description": display_name,
+            meta = case_metadata(rel_path, idx + 1, steps[0])
+            metadata[meta["params_id"]] = {
+                "file": meta["file"],
+                "name": meta["name"],
+                "description": meta["description"],
             }
 
     return metadata
