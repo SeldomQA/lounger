@@ -360,28 +360,55 @@ def pytest_addoption(parser: Any) -> None:
     )
 
 
+#: Parametrize argument names lounger's own decorators use. ``lounger.data`` /
+#: ``file_data`` parametrize ``"params"``; the YAML entry file produced by
+#: ``@load_teststeps()`` parametrizes ``"teststeps"``.
+CASE_PARAM_NAMES = ("teststeps", "params")
+
+
+def _case_payload(item) -> Any:
+    """
+    Return the parametrized case data of a test item, or ``None``.
+
+    Only the parameter names lounger itself generates are considered, so a
+    project's own ``@pytest.mark.parametrize("foo", ...)`` is left alone.
+    """
+    callspec = getattr(item, "callspec", None)
+    params = getattr(callspec, "params", None)
+    if not isinstance(params, dict):
+        return None
+    for name in CASE_PARAM_NAMES:
+        if name in params:
+            return params[name]
+    return None
+
+
+def _case_display_name(case_data: Any) -> str:
+    """Derive a readable case name from parametrized case data."""
+    # Extract case name (priority: business fields > first value > type name)
+    if isinstance(case_data, dict):
+        # Prefer explicit description fields
+        for key in ("test_case", "test_scene", "name", "step"):
+            if key in case_data:
+                return str(case_data[key])
+        return str(next(iter(case_data.values()), "")) if case_data else ""
+    if isinstance(case_data, (list, tuple)):
+        return str(case_data[0]) if case_data else ""
+    return str(case_data) if case_data is not None else "none"
+
+
 def pytest_collection_modifyitems(config, items):
     """
     Dynamically set Description for parameterized test cases.
+
+    YAML cases are included: they arrive through ``@load_teststeps()``, which
+    parametrizes ``teststeps`` — the previous implementation only looked at
+    ``params``, so every YAML case silently kept the entry function's docstring.
     """
     for item in items:
-        # Precise check: only process parameterized tests with parameter name 'params'
-        if hasattr(item, "callspec") and "params" in item.callspec.params:
-            case_data = item.callspec.params["params"]
-
-            # Extract case name (priority: business fields > first value > type name)
-            if isinstance(case_data, dict):
-                # Prefer explicit description fields
-                for key in ("test_case", "test_scene"):
-                    if key in case_data:
-                        case_name = str(case_data[key])
-                        break
-                else:
-                    case_name = str(next(iter(case_data.values()), "")) if case_data else ""
-            elif isinstance(case_data, (list, tuple)):
-                case_name = str(case_data[0]) if case_data else ""
-            else:
-                case_name = str(case_data) if case_data is not None else "none"
+        case_data = _case_payload(item)
+        if case_data is not None:
+            case_name = _case_display_name(case_data)
 
             # Create a new function object with updated docstring
             func = item._obj
