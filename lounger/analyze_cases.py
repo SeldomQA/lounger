@@ -6,6 +6,7 @@ import yaml
 
 from lounger.case_id import encode, extract_step_name, normalize_path
 from lounger.commons.load_config import LoadConfig
+from lounger.commons.template_engine import validate_template_functions
 from lounger.log import log
 
 
@@ -153,6 +154,10 @@ def load_test_cases() -> List[Tuple[str, List[Dict], str]]:
             # (case_discovery, the Web Runner tree) cannot drift apart.
             first_step_after_merge = merged_steps[0] if merged_steps else None
             test_name = encode(case_relpath, idx + 1, extract_step_name(first_step_after_merge))
+
+            # Fail (or warn) at collection time instead of injecting `null` at
+            # run time when a case references an unregistered template function.
+            validate_template_functions(merged_steps, f"{case_relpath} case_{idx + 1}")
 
             testcases.append((test_name, merged_steps, file_path))
 
