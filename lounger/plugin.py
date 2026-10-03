@@ -9,7 +9,6 @@ from io import StringIO
 from typing import Any
 
 import pytest
-from pytest_req.log import log_cfg
 
 from lounger import __version__
 from lounger.log import log
@@ -69,6 +68,11 @@ def _configure_logging(log_format: str) -> None:
     saved_stderr = sys.stderr
     sys.stderr = real_stderr
     try:
+        # Imported lazily (like ``lounger.log``): importing ``pytest_req.log``
+        # has side effects derived from the caller frame, which must not happen
+        # while this plugin module is being loaded by the pytest entry point.
+        from lounger.log import log_cfg
+
         log_cfg.set_level(format=log_format)
     finally:
         sys.stderr = saved_stderr
