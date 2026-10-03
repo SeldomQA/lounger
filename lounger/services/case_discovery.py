@@ -43,9 +43,32 @@ YAML_CASE_RE = CASE_SUFFIX_RE
 CaseNamingRule = Callable[[str, dict], dict | None]
 
 
+def _sanitized_addopts(scan_dir: str) -> str:
+    """
+    Return the project's ``addopts`` with plugin-dependent options removed.
+
+    Collection only needs to *find* tests, but pytest applies the project's
+    ``addopts`` first. A checkout whose ``pytest.ini`` requests ``--html`` aborts
+    collection with ``unrecognized arguments`` whenever the reporting plugin is
+    not installed — making collection success depend on the environment. Report
+    options are therefore stripped and applied via ``-o addopts=...``.
+    """
+    from lounger.services.test_execution import read_project_addopts, without_html_addopts
+
+    try:
+        return without_html_addopts(read_project_addopts(scan_dir))
+    except Exception:  # noqa: BLE001 - a malformed config must not break collection
+        return ""
+
+
 def _collect_via_subprocess(scan_dir: str, timeout: int = 30) -> list[dict]:
     """
     Run pytest --collect-only in a subprocess and parse the JSON output.
+
+    The child environment is sanitised: ``PYTEST_ADDOPTS`` and
+    ``PYTEST_DISABLE_PLUGIN_AUTOLOAD`` are inherited otherwise, so a parent
+    invocation could silently change or break the child (the latter disables the
+    plugins the project's own ``addopts`` may need).
 
     :param scan_dir: Project root directory (where config/config.yaml lives).
     :param timeout: Subprocess timeout in seconds.
@@ -59,12 +82,23 @@ def _collect_via_subprocess(scan_dir: str, timeout: int = 30) -> list[dict]:
         "cases = get_test_cases(sys.argv[1] if len(sys.argv) > 1 else '.')\n"
         "print(json.dumps(cases, ensure_ascii=False))\n"
     )
+    env = dict(os.environ)
+    for inherited in ("PYTEST_ADDOPTS", "PYTEST_DISABLE_PLUGIN_AUTOLOAD"):
+        env.pop(inherited, None)
+    addopts = _sanitized_addopts(scan_dir)
+    if addopts:
+        # pytest applies the ini's ``addopts`` *before* PYTEST_ADDOPTS, so the
+        # original value has to be replaced for the report flags to disappear:
+        # ``-o addopts=`` overrides the ini entry outright.
+        env["PYTEST_ADDOPTS"] = f"-o addopts={addopts}"
+
     result = subprocess.run(
         [sys.executable, "-c", script, scan_dir],
         cwd=scan_dir,
         capture_output=True,
         text=True,
         timeout=timeout,
+        env=env,
     )
 
     if result.returncode != 0:
