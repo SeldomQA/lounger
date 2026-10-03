@@ -447,7 +447,12 @@ class RunManager:
             self.store.update_run(run_id, {"state": "finalizing"})
             self.events.publish()
             try:
-                results, counts = parse_junit(directory / "junit.xml")
+                # The manifest is the ordered selection written to targets.json
+                # and passed as --run-json, so JUnit's testcases line up with it
+                # positionally; it is what gives every result its nodeid.
+                results, counts = parse_junit(
+                    directory / "junit.xml", item["request"]["selection"]["nodeids"]
+                )
                 for index, result in enumerate(results):
                     for field in ("stdout", "stderr"):
                         content = result.pop(field, "")

@@ -326,11 +326,30 @@ function renderRunHeader(){
   $('downloadLog').href='/api/v1/runs/'+run.id+'/artifacts/output.log';setRunButtonsDisabled(projectBusy);
 }
 function showDetailTab(tab){detailTab=tab;for(const [name,id] of [['results','resultPane'],['logs','logPane'],['config','configPane']])$(id).hidden=name!==tab;document.querySelectorAll('#runTabs button').forEach(b=>{b.classList.toggle('active',b.dataset.tab===tab);b.setAttribute('aria-selected',String(b.dataset.tab===tab));});if(tab==='logs')requestAnimationFrame(()=>renderLog(logFollow));}
+// Trace a run result back to its case in the workspace tree: clear the sidebar
+// filters (they would hide the case) and expand the tree so the node is visible.
+function revealCase(nodeid){
+  $('search').value='';
+  if(activeTagFilters.size){for(const tag of [...activeTagFilters])toggleTagFilter(tag);}
+  if(showFavoritesOnly)toggleFavoritesFilter();
+  navigate('cases');
+  for(const group of document.querySelectorAll('#caseList .tree-children')){
+    const header=group.previousElementSibling;
+    group.classList.add('show');
+    if(header){header.classList.add('open');header.style.display='';}
+    const key=header?.dataset.nodeKey;
+    if(key)expandedNodes.add(key);
+  }
+  saveExpandedNodes();filterCases();
+  const row=[...document.querySelectorAll('#caseList .tree-case')].find(node=>(node.getAttribute('onclick')||'').includes("'"+nodeid+"'"));
+  if(!row){notice('该用例已不在当前用例树中（可能已改名或删除）：'+nodeid);return;}
+  row.scrollIntoView({block:'center'});row.classList.add('revealed');setTimeout(()=>row.classList.remove('revealed'),2600);
+}
 async function loadResults(version=detailVersion){
   if(!detailRun)return;const generation=++resultsVersion;const run=detailRun;const data=await api('runs/'+run.id+'/results?page='+resultPage+'&outcome='+$('resultFilter').value);if(version!==detailVersion||generation!==resultsVersion)return;
   const host=$('runResults');host.classList.remove('is-empty');host.replaceChildren();$('resultHint').textContent=run.result_status==='ready'?`共 ${data.total} 条结果`:run.result_status==='pending'?'执行结束后生成用例结果':run.result_status==='partial'?'以下为已生成的部分结果':'本次没有可用的结构化报告，可查看执行日志';
   if(!data.items.length)empty(host,!terminal.has(run.state)?'测试正在执行':'暂无匹配结果',!terminal.has(run.state)?'切换到执行日志查看实时进度。':'可以调整结果筛选，或查看执行日志。');
-  for(const result of data.items){const row=el('details','result-row');row.open=['failed','error'].includes(result.outcome);const summary=el('summary');summary.append(badge(outcomeNames[result.outcome]||result.outcome,result.outcome),el('strong','',result.name),el('span','muted result-class',result.classname),el('span','muted',duration(result.duration_ms)));const content=el('div','result-content');content.append(el('pre','',result.failure_text||result.stdout||result.stderr||'该用例没有附加日志。'));for(const key of ['stdout','stderr'])if(result[key+'_path']){const link=el('a','text-button',key==='stdout'?'完整标准输出 ↗':'完整错误输出 ↗');link.href='/api/v1/runs/'+run.id+'/artifacts/'+result[key+'_path'];link.target='_blank';link.rel='noopener';content.append(link);}row.append(summary,content);host.append(row);}
+  for(const result of data.items){const row=el('details','result-row');row.open=['failed','error'].includes(result.outcome);const summary=el('summary');summary.append(badge(outcomeNames[result.outcome]||result.outcome,result.outcome),el('strong','',result.name),el('span','muted result-class',result.classname),el('span','muted',duration(result.duration_ms)));if(result.nodeid){const nodeid=el('a','text-button result-nodeid','定位用例');nodeid.href='#';nodeid.title=result.nodeid;nodeid.onclick=event=>{event.preventDefault();revealCase(result.nodeid);};summary.append(nodeid);}const content=el('div','result-content');content.append(el('pre','',result.failure_text||result.stdout||result.stderr||'该用例没有附加日志。'));for(const key of ['stdout','stderr'])if(result[key+'_path']){const link=el('a','text-button',key==='stdout'?'完整标准输出 ↗':'完整错误输出 ↗');link.href='/api/v1/runs/'+run.id+'/artifacts/'+result[key+'_path'];link.target='_blank';link.rel='noopener';content.append(link);}row.append(summary,content);host.append(row);}
   pager('resultPager',data,async page=>{resultPage=page;await loadResults();});
 }
 function renderLog(follow=false){
