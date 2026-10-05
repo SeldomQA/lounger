@@ -190,7 +190,8 @@ def terminate_pytest(proc: subprocess.Popen) -> None:
             subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, timeout=10)
     else:
         try:
-            os.killpg(proc.pid, signal.SIGTERM)
+            # POSIX-only API: absent from the typeshed stub on Windows.
+            os.killpg(proc.pid, signal.SIGTERM)  # type: ignore[attr-defined]
         except ProcessLookupError:
             pass
         try:
@@ -199,7 +200,7 @@ def terminate_pytest(proc: subprocess.Popen) -> None:
             pass
         # The parent may exit before children that ignore SIGTERM.
         try:
-            os.killpg(proc.pid, signal.SIGKILL)
+            os.killpg(proc.pid, signal.SIGKILL)  # type: ignore[attr-defined]
         except ProcessLookupError:
             pass
     proc.wait(timeout=10)

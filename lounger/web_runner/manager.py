@@ -201,7 +201,8 @@ class RunManager:
             alive = self._alive(pid)
             if os.name != "nt" and pid:
                 try:
-                    os.killpg(pid, 0)
+                    # POSIX-only API: absent from the typeshed stub on Windows.
+                    os.killpg(pid, 0)  # type: ignore[attr-defined]
                     alive = True
                 except ProcessLookupError:
                     pass
@@ -632,7 +633,8 @@ class RunManager:
         alive = self._alive(pid)
         if os.name != "nt" and pid:
             try:
-                os.killpg(pid, 0)
+                # POSIX-only API: absent from the typeshed stub on Windows.
+                os.killpg(pid, 0)  # type: ignore[attr-defined]
                 alive = True
             except ProcessLookupError:
                 pass

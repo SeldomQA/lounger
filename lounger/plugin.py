@@ -6,7 +6,7 @@ import time
 import types
 from datetime import datetime, timezone
 from io import StringIO
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import pytest
 
@@ -20,11 +20,9 @@ from lounger.plugin_hooks import (
 )
 from lounger.pytest_extend.screenshot import screenshot_base64
 
-if TYPE_CHECKING:  # pragma: no cover - typing only
-    from loguru import Logger
-
-    log: Logger
-
+#: Module-level logger used by the hooks below. Declared as the lazy proxy defined
+#: further down; no ``TYPE_CHECKING`` annotation is needed (and one would be
+#: reported as a redefinition).
 LOG_STREAM = StringIO()
 
 html_title = "Lounger Test Report"

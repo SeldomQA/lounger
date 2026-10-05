@@ -51,7 +51,10 @@ class ProjectLock:
             else:
                 import fcntl
 
-                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                # POSIX-only API: absent from the typeshed stub on Windows.
+                fcntl.flock(  # type: ignore[attr-defined]
+                    handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB  # type: ignore[attr-defined]
+                )
         except OSError as exc:
             handle.close()
             raise RuntimeError("This project already has a running Lounger runner") from exc
