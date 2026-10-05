@@ -2,16 +2,20 @@
 Tests for web runner v2 features:
 
 - Run history persistence (list/load/delete archived runs, timestamps)
-- Concurrency control (MAX_CONCURRENT_RUNS, can_start_run, active_run_count)
-- Multi-project support (init_projects, switch_project, get_current_scan_dir)
-- HTML UI elements (tabs, history panel, project selector, tag chips, favorites)
+- Concurrency control (single run per project, enforced by ``RunManager``)
+- Shell UI elements (tabs, history panel, tag chips, favorites)
+
+The archived-run helpers in ``lounger.services.test_execution`` are still used to
+import legacy ``reports/runs/*.json`` snapshots, so their contracts stay covered.
 """
 import json
 import threading
 import time
 
+import pytest
+
 from lounger.services import test_execution
-from lounger.web_runner import html, state
+from tests.conftest import shell_assets
 
 # ── history API ────────────────────────────────────────────────────────────
 
@@ -142,102 +146,89 @@ def test_archive_run_persists_timestamps(tmp_path):
 
 # ── concurrency control ────────────────────────────────────────────────────
 
-def test_is_any_run_active_false_when_empty():
-    saved = dict(state._active_runs)
-    state._active_runs.clear()
+def test_project_lock_rejects_a_second_manager(runner_project):
+    """Only one manager may own a project (the production concurrency guard)."""
+    from lounger.web_runner.context import ProjectContext
+    from lounger.web_runner.manager import RunManager
+
+    first = RunManager(ProjectContext.create(str(runner_project)))
     try:
-        assert state.is_any_run_active() is False
-        assert state.active_run_count() == 0
+        with pytest.raises(RuntimeError, match="already has a running Lounger runner"):
+            RunManager(ProjectContext.create(str(runner_project)))
     finally:
-        state._active_runs.update(saved)
+        first.close()
 
 
-def test_is_any_run_active_true_when_running():
-    saved = dict(state._active_runs)
-    state._active_runs.clear()
-    try:
-        state._active_runs["r0"] = {"status": "running"}
-        assert state.is_any_run_active() is True
-    finally:
-        state._active_runs.clear()
-        state._active_runs.update(saved)
+def test_busy_project_is_reported_to_the_ui(runner):
+    """``/api/v1/project`` exposes a busy flag the shell uses to disable runs."""
+    client, manager = runner
+    status, project = client.call("/api/v1/project")
+
+    assert status == 200
+    assert project["busy"] is False
+    assert manager.operation.locked() is False
 
 
-def test_active_run_count_ignores_completed():
-    """Only 'running' status counts."""
-    saved = dict(state._active_runs)
-    state._active_runs.clear()
-    try:
-        state._active_runs["r0"] = {"status": "running"}
-        state._active_runs["r1"] = {"status": "completed"}
-        state._active_runs["r2"] = {"status": "error"}
-        assert state.active_run_count() == 1
-    finally:
-        state._active_runs.clear()
-        state._active_runs.update(saved)
+# ── shell UI checks (against the shipped assets) ───────────────────────────
 
+ASSETS = shell_assets()
 
-# ── HTML UI checks ─────────────────────────────────────────────────────────
 
 def test_html_has_tab_switching():
-    """HTML contains tab bar with live and history tabs."""
-    assert 'tab-btn active' in _FALLBACK_HTML
-    assert 'onclick="switchTab(\'live\')"' in _FALLBACK_HTML
-    assert 'onclick="switchTab(\'history\')"' in _FALLBACK_HTML
-    assert 'id="panelLive"' in _FALLBACK_HTML
-    assert 'id="panelHistory"' in _FALLBACK_HTML
+    """The shell contains a tab bar with the live and history panes."""
+    assert 'tab-btn active' in ASSETS
+    assert 'onclick="switchTab(\'live\')"' in ASSETS
+    assert 'onclick="switchTab(\'history\')"' in ASSETS
+    assert 'id="panelLive"' in ASSETS
+    assert 'id="panelHistory"' in ASSETS
 
 
 def test_html_has_history_functions():
-    """HTML contains history loading, viewing, and deleting functions."""
-    assert 'async function loadHistory()' in _FALLBACK_HTML
-    assert 'async function viewHistoryRun(' in _FALLBACK_HTML
-    assert 'async function deleteHistoryRun(' in _FALLBACK_HTML
-    assert '/api/history' in _FALLBACK_HTML
+    """The shell contains history loading, viewing, and deleting functions."""
+    assert 'async function loadHistory()' in ASSETS
+    assert 'async function viewHistoryRun(' in ASSETS
+    assert 'async function deleteHistoryRun(' in ASSETS
+    assert '/api/history' in ASSETS
 
 
 def test_html_no_project_selector():
     """Project selector has been removed (single-project mode)."""
-    assert 'projectSelector' not in _FALLBACK_HTML
-    assert 'loadProjects' not in _FALLBACK_HTML
-    assert 'switchProject' not in _FALLBACK_HTML
+    assert 'projectSelector' not in ASSETS
+    assert 'loadProjects' not in ASSETS
+    assert 'switchProject' not in ASSETS
 
 
 def test_html_has_tag_filter():
-    """HTML contains tag filter bar and related functions."""
-    assert 'id="tagBar"' in _FALLBACK_HTML
-    assert 'function renderTagBar()' in _FALLBACK_HTML
-    assert 'function toggleTagFilter(' in _FALLBACK_HTML
-    assert 'activeTagFilters' in _FALLBACK_HTML
-    assert 'tag-chip' in _FALLBACK_HTML
+    """The shell contains the tag filter bar and its functions."""
+    assert 'id="tagBar"' in ASSETS
+    assert 'function renderTagBar()' in ASSETS
+    assert 'function toggleTagFilter(' in ASSETS
+    assert 'activeTagFilters' in ASSETS
+    assert 'tag-chip' in ASSETS
 
 
 def test_html_has_favorites():
-    """HTML contains favorites with localStorage persistence."""
-    assert 'FAVORITES_KEY' in _FALLBACK_HTML
-    assert 'lounger.webRunner.favorites' in _FALLBACK_HTML
-    assert 'function loadFavorites()' in _FALLBACK_HTML
-    assert 'function saveFavorites()' in _FALLBACK_HTML
-    assert 'function toggleFavorite(' in _FALLBACK_HTML
-    assert 'fav-btn' in _FALLBACK_HTML
+    """The shell contains favorites with localStorage persistence."""
+    assert 'FAVORITES_KEY' in ASSETS
+    assert 'lounger.webRunner.favorites' in ASSETS
+    assert 'function loadFavorites()' in ASSETS
+    assert 'function saveFavorites()' in ASSETS
+    assert 'function toggleFavorite(' in ASSETS
+    assert 'fav-btn' in ASSETS
 
 
 def test_html_has_run_status():
-    """HTML shows run status and disables buttons while running."""
-    assert 'id="runCounter"' in _FALLBACK_HTML
-    assert 'function updateRunStatus()' in _FALLBACK_HTML
-    assert 'function setRunButtonsDisabled(' in _FALLBACK_HTML
-    assert 'id="runSelectedBtn"' in _FALLBACK_HTML
-    assert 'id="runAllBtn"' in _FALLBACK_HTML
-    assert '/api/runs' in _FALLBACK_HTML
+    """The shell shows run status and disables buttons while running."""
+    assert 'id="runCounter"' in ASSETS
+    assert 'function updateRunStatus()' in ASSETS
+    assert 'function setRunButtonsDisabled(' in ASSETS
+    assert 'id="runSelectedBtn"' in ASSETS
+    assert 'id="runAllBtn"' in ASSETS
+    assert '/api/runs' in ASSETS
 
 
 def test_html_no_queue_ui():
     """Queue UI has been removed (simplified for single-user)."""
-    assert 'queueBar' not in _FALLBACK_HTML
-    assert 'showQueueBar' not in _FALLBACK_HTML
-    assert 'pollQueueStatus' not in _FALLBACK_HTML
-
-
-# keep reference for readability
-_FALLBACK_HTML = html._FALLBACK_HTML
+    assert 'queueBar' not in ASSETS
+    assert 'showQueueBar' not in ASSETS
+    assert 'pollQueueStatus' not in ASSETS

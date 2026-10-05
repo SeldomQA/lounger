@@ -1,12 +1,16 @@
 # Pre-commit hooks for lounger (docs/development_plan.md P2)
 # Install: pip install pre-commit && pre-commit install
+#
+# Formatting is owned by black alone (see [tool.black] in pyproject.toml).
+# ruff-format is deliberately NOT enabled: the two formatters disagree (e.g. on a
+# blank line after a module docstring), which made the hooks rewrite each other's
+# output back and forth on every run.
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.16.3
     hooks:
       - id: ruff
         args: [check, --fix]
-      - id: ruff-format
 
   - repo: https://github.com/psf/black
     rev: 24.10.0

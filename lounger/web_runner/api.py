@@ -11,13 +11,15 @@ from importlib.resources import files
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
+from .http_base import BaseHandler
 from .manager import ANSI, validate_definition
-from .server import _RequestHandler
 from .storage import TERMINAL, Problem
 from .tree import _build_case_tree
 
 
-class PlatformHandler(_RequestHandler):
+class PlatformHandler(BaseHandler):
+    """The runner's only route handler: versioned API plus legacy compatibility."""
+
     server: Any
 
     @property
@@ -102,7 +104,10 @@ class PlatformHandler(_RequestHandler):
         except (ValueError, TypeError, KeyError) as exc:
             self.reply({"error": {"code": "invalid_request", "message": str(exc)}}, 400)
         except (sqlite3.Error, OSError) as exc:
-            if isinstance(exc, (BrokenPipeError, ConnectionResetError)):
+            # The browser navigating away mid-request is normal (it aborts the
+            # outstanding XHR); it must not be reported as a storage failure nor
+            # produce a second error while writing the 503 response.
+            if isinstance(exc, (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)):
                 return
             self.reply({"error": {"code": "storage_unavailable", "message": str(exc)}}, 503)
 
@@ -247,7 +252,7 @@ class PlatformHandler(_RequestHandler):
                 revision = self.manager.events.revision
                 snapshot = self.manager.project()
                 if snapshot != previous:
-                    self._sse_event(snapshot)
+                    self.sse_event(snapshot)
                     previous = snapshot
                 self.wait_for_events(revision)
         except (BrokenPipeError, ConnectionResetError):
@@ -269,12 +274,12 @@ class PlatformHandler(_RequestHandler):
                 if batch["cursor"] != cursor:
                     cursor = batch["cursor"]
                     self.wfile.write(f"id: {cursor}\n".encode())
-                    self._sse_event(
+                    self.sse_event(
                         {"text": batch["text"], "lines": ANSI.sub("", batch["text"]).splitlines(True), "cursor": cursor}
                     )
                     continue
                 if item["state"] in TERMINAL:
-                    self._sse_event(
+                    self.sse_event(
                         {
                             "done": True,
                             "status": item["state"],
@@ -284,14 +289,14 @@ class PlatformHandler(_RequestHandler):
                         }
                     )
                     break
-                self._sse_event({"heartbeat": True, "status": item["state"]})
+                self.sse_event({"heartbeat": True, "status": item["state"]})
                 self.wait_for_events(revision)
         except (BrokenPipeError, ConnectionResetError):
             pass
         except Problem as exc:
             if exc.status != 404:
                 raise
-            self._sse_event({"done": True, "status": "deleted", "outcome": "unknown"})
+            self.sse_event({"done": True, "status": "deleted", "outcome": "unknown"})
 
     @staticmethod
     def report_url(item):
@@ -359,7 +364,7 @@ class PlatformHandler(_RequestHandler):
             parts = path.split("/")[3:]
             item = store.run(store.legacy_id(parts[0]))
             if item.get("report_path"):
-                return self._redirect(self.report_url(item))
+                return self.redirect(self.report_url(item))
             if item.get("legacy_report"):
                 from pathlib import Path
 
@@ -371,7 +376,7 @@ class PlatformHandler(_RequestHandler):
                 if not original.is_relative_to(root):
                     raise Problem("not_found", "Legacy report is outside project reports", 404)
                 if len(parts) == 1:
-                    return self._redirect("/api/report/" + item["id"] + "/" + original.name)
+                    return self.redirect("/api/report/" + item["id"] + "/" + original.name)
                 target = (original.parent / "/".join(parts[1:])).resolve()
                 if target.is_relative_to(original.parent) and target.is_file():
                     return self.send_file(target)

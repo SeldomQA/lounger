@@ -317,7 +317,7 @@ def test_skip():
 
 
 def test_bad_report_does_not_invent_passes(manager, monkeypatch):
-    def malformed(_):
+    def malformed(path, manifest=None):
         raise ValueError("bad xml")
 
     monkeypatch.setattr("lounger.web_runner.manager.parse_junit", malformed)

@@ -11,8 +11,8 @@ import pytest
 
 from lounger.web_runner.api import PlatformHandler
 from lounger.web_runner.context import ProjectContext
+from lounger.web_runner.http_base import RunnerHTTPServer
 from lounger.web_runner.manager import RunManager
-from lounger.web_runner.server import _ThreadingHTTPServer
 
 
 @pytest.fixture
@@ -20,7 +20,7 @@ def http(tmp_path):
     (tmp_path / "pytest.ini").write_text("[pytest]\n")
     (tmp_path / "test_demo.py").write_text('def test_ok():\n    print("你好")\n    assert True\n', encoding="utf-8")
     manager = RunManager(ProjectContext.create(str(tmp_path)))
-    server = _ThreadingHTTPServer(("127.0.0.1", 0), PlatformHandler)
+    server = RunnerHTTPServer(("127.0.0.1", 0), PlatformHandler)
     server.manager, server.session_token = manager, secrets.token_urlsafe(32)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()

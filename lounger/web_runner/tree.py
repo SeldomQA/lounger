@@ -1,6 +1,21 @@
-"""Directory → tree structure for the web UI."""
+"""
+Directory → tree structure for the web UI.
+
+``relpath`` values use forward slashes on every platform. The front-end builds
+element keys (and selectors) as ``<type>:<relpath>``, so a Windows-style
+backslash would make every directory and file node unaddressable — expand,
+collapse, favourites and single-case runs all key off those strings.
+"""
 
 from pathlib import Path
+
+#: Path form used in ``relpath`` and therefore in the UI's node keys.
+_POSIX = "/"
+
+
+def _node_key(parts) -> str:
+    """Join path segments with forward slashes (stable across platforms)."""
+    return _POSIX.join(str(part) for part in parts)
 
 
 def _build_case_tree(cases: list[dict], scan_dir: str) -> dict:
@@ -40,7 +55,7 @@ def _build_case_tree(cases: list[dict], scan_dir: str) -> dict:
                 found = {
                     "name": part,
                     "type": "dir",
-                    "relpath": str(Path(*parts[: i + 1])),
+                    "relpath": _node_key(parts[: i + 1]),
                     "children": [],
                     "total_cases": 0,
                 }
@@ -57,7 +72,7 @@ def _build_case_tree(cases: list[dict], scan_dir: str) -> dict:
             file_node = {
                 "name": filename,
                 "type": "file",
-                "relpath": str(rel),
+                "relpath": _node_key(parts),
                 "cases": [],
             }
             current.setdefault("children", []).append(file_node)

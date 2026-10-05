@@ -7,8 +7,8 @@ import pytest
 
 from lounger.web_runner.api import PlatformHandler
 from lounger.web_runner.context import ProjectContext
+from lounger.web_runner.http_base import RunnerHTTPServer
 from lounger.web_runner.manager import RunManager
-from lounger.web_runner.server import _ThreadingHTTPServer
 
 
 @pytest.fixture
@@ -17,7 +17,7 @@ def workbench(tmp_path):
     (tmp_path / "test_demo.py").write_text('def test_ok():\n    print("browser test log")\n    assert True\n')
     manager = RunManager(ProjectContext.create(str(tmp_path)))
     manager.watch()
-    server = _ThreadingHTTPServer(("127.0.0.1", 0), PlatformHandler)
+    server = RunnerHTTPServer(("127.0.0.1", 0), PlatformHandler)
     server.manager, server.session_token = manager, secrets.token_urlsafe(32)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -182,7 +182,9 @@ def test_large_log_tail_search_and_load_earlier(workbench, delayed_startup):
     directory = manager.directory(rid)
     directory.mkdir(parents=True)
     content = "起始标记 START\n" + "中文日志内容 " * 5000 + "\n结束标记 END\n"
-    (directory / "output.log").write_text(content, encoding="utf-8")
+    # Written as bytes: text mode would turn "\n" into "\r\n" on Windows, and the
+    # clipboard assertions below compare against line content without line endings.
+    (directory / "output.log").write_bytes(content.encode("utf-8"))
     pending_collection = []
     if delayed_startup:
         page.route("**/api/v1/cases/tree", lambda route: pending_collection.append(route))
@@ -217,9 +219,14 @@ def test_large_log_tail_search_and_load_earlier(workbench, delayed_startup):
     expect(page.locator("#copyLog")).to_have_text("复制可见日志")
     expect(page.locator("#copyLog")).to_be_enabled()
     if delayed_startup:
-        assert len(pending_collection) == 1
+        # The shell may issue more than one collection request (initial load and
+        # the source-refresh debounce); what matters is that a *pending* collection
+        # never blocks navigation, and that answering it restores the view state.
+        assert pending_collection, "the delayed collection request was never intercepted"
         with page.expect_request("**/api/v1/project/events"):
-            pending_collection[0].fulfill(json={"flat": [], "tree": {"children": []}})
+            for route in list(pending_collection):
+                route.fulfill(json={"flat": [], "tree": {"children": []}})
+        pending_collection.clear()
         expect(page.locator("#logSearch")).to_have_value("END")
         expect(page.locator("#logPane")).to_be_visible()
     page.locator("#earlierLogs").click()
@@ -338,7 +345,7 @@ def test_task_run_defaults_to_quiet_and_honors_toolbar(workbench):
     expect(page.locator("#runStatus")).to_contain_text("通过", timeout=20000)
     run = manager.store.runs()["items"][0]
     assert run["request"]["options"]["verbosity"] == "quiet"
-    assert "browser test log" not in (manager.directory(run["id"]) / "output.log").read_text()
+    assert "browser test log" not in (manager.directory(run["id"]) / "output.log").read_text(encoding="utf-8")
     assert not errors, errors
 
 

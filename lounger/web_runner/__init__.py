@@ -21,8 +21,8 @@ from . import state
 from .api import PlatformHandler as _RequestHandler
 from .collect import get_test_cases  # noqa: F401 — public API
 from .context import ProjectContext
+from .http_base import RunnerHTTPServer as _ThreadingHTTPServer
 from .manager import RunManager
-from .server import _ThreadingHTTPServer
 
 __all__ = ["main", "browser_url", "get_test_cases"]
 

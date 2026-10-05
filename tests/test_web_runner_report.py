@@ -6,20 +6,19 @@ Tests for the HTML report feature of the web runner:
 - a finished run exposes its report, served over HTTP so it can be opened in a
   new browser tab (``file://`` links are blocked from an ``http://`` page);
 - run history keeps each run's own report path.
+
+The HTTP assertions run against the production platform API
+(``/api/v1/runs/{id}/artifacts/...``). They used to run against a second,
+unreachable route handler that kept its own in-memory run model.
 """
 
 import json
-import threading
-import urllib.error
-import urllib.request
-from pathlib import Path
+import shlex
 
 import pytest
 
 from lounger.services import test_execution
-from lounger.web_runner import server as server_mod
-from lounger.web_runner.html import _FALLBACK_HTML
-from lounger.web_runner.state import _active_runs, _runs_lock
+from tests.conftest import make_run, run_id, shell_assets
 
 # ── service layer: report path & addopts handling ─────────────────────────
 
@@ -152,229 +151,142 @@ def test_serialize_run_keeps_report_fields():
     assert snapshot["report_path"] == "/tmp/r.html"
 
 
-# ── server: serving the report over HTTP ──────────────────────────────────
+# ── platform API: serving the report over HTTP ────────────────────────────
 
 
-def _with_server():
-    httpd = server_mod._ThreadingHTTPServer(("127.0.0.1", 0), server_mod._RequestHandler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd
+def test_report_artifact_is_served_with_its_assets(runner_project):
+    """A finished run's report (and relative assets) are reachable over HTTP."""
+    from tests.conftest import runner_server
 
-
-def _get(url, redirect=True):
-    if redirect:
-        return urllib.request.urlopen(url, timeout=5)
-    opener = urllib.request.build_opener(
-        type(
-            "NoRedirect",
-            (urllib.request.HTTPRedirectHandler,),
-            {"redirect_request": lambda *a, **k: None},
+    with runner_server(runner_project) as (client, manager):
+        identifier = run_id("a")
+        directory = manager.directory(identifier)
+        (directory / "html" / "assets").mkdir(parents=True)
+        (directory / "html" / "report.html").write_text(
+            '<html><head><link rel="stylesheet" href="assets/style.css"></head>'
+            "<body>lounger report</body></html>",
+            encoding="utf-8",
         )
-    )
-    return opener.open(url, timeout=5)
+        (directory / "html" / "assets" / "style.css").write_text("body{color:red}", encoding="utf-8")
+        make_run(manager, identifier, report_path="html/report.html")
+
+        status, run = client.call(f"/api/v1/runs/{identifier}")
+        assert status == 200 and run["report_path"] == "html/report.html"
+
+        with client.open(f"/api/v1/runs/{identifier}/artifacts/html/report.html") as response:
+            assert response.status == 200
+            assert b"lounger report" in response.read()
+
+        with client.open(f"/api/v1/runs/{identifier}/artifacts/html/assets/style.css") as response:
+            assert response.status == 200
+            assert "text/css" in response.headers["Content-Type"]
+            assert response.read() == b"body{color:red}"
 
 
-def test_report_is_served_and_assets_resolve(tmp_path, monkeypatch):
-    """A finished run's report is reachable over HTTP (new-tab friendly)."""
-    report_dir = tmp_path / "reports"
-    (report_dir / "assets").mkdir(parents=True)
-    report = report_dir / "result_run1.html"
-    report.write_text(
-        '<html><head><link rel="stylesheet" href="assets/style.css"></head><body>lounger report</body></html>',
-        encoding="utf-8",
-    )
-    (report_dir / "assets" / "style.css").write_text("body{color:red}", encoding="utf-8")
+def test_report_artifact_rejects_unknown_run(runner):
+    client, _ = runner
 
-    with _runs_lock:
-        _active_runs["run1"] = {"status": "completed", "logs": [], "report_path": str(report)}
-    monkeypatch.setattr(server_mod.state, "_scan_dir", str(tmp_path))
+    status, error = client.call("/api/v1/runs/" + run_id("9") + "/artifacts/html/report.html")
 
-    httpd = _with_server()
-    port = httpd.server_address[1]
-    try:
-        # the short URL redirects into the report directory so relative assets work
-        with _get(f"http://127.0.0.1:{port}/api/report/run1") as resp:
-            assert resp.status == 200
-            assert b"lounger report" in resp.read()
-            assert resp.url.endswith("/api/report/run1/result_run1.html")
-
-        with _get(f"http://127.0.0.1:{port}/api/report/run1/assets/style.css") as resp:
-            assert resp.status == 200
-            assert "text/css" in resp.headers["Content-Type"]
-            assert resp.read() == b"body{color:red}"
-    finally:
-        httpd.shutdown()
-        httpd.server_close()
-        with _runs_lock:
-            _active_runs.pop("run1", None)
+    assert status == 404
+    assert error["error"]["code"] == "not_found"
 
 
-def test_report_route_rejects_unknown_run(tmp_path, monkeypatch):
-    monkeypatch.setattr(server_mod.state, "_scan_dir", str(tmp_path))
-    httpd = _with_server()
-    port = httpd.server_address[1]
-    try:
-        with pytest.raises(urllib.error.HTTPError) as excinfo:
-            _get(f"http://127.0.0.1:{port}/api/report/nope")
-        assert excinfo.value.code == 404
-    finally:
-        httpd.shutdown()
-        httpd.server_close()
+def test_report_artifact_blocks_path_traversal(runner_project):
+    """A crafted relative path must not escape the run directory."""
+    from tests.conftest import runner_server
+
+    with runner_server(runner_project) as (client, manager):
+        identifier = run_id("8")
+        make_run(manager, identifier)
+        secret = runner_project / "secret.txt"
+        secret.write_text("top secret", encoding="utf-8")
+
+        for attempt in (
+            "html/../../secret.txt",
+            "../../secret.txt",
+            "..%2F..%2Fsecret.txt",
+        ):
+            status, _ = client.call(f"/api/v1/runs/{identifier}/artifacts/{attempt}")
+            assert status == 404, f"traversal via {attempt!r} was not blocked"
 
 
-def test_report_route_blocks_path_traversal(tmp_path, monkeypatch):
-    report_dir = tmp_path / "reports"
-    report_dir.mkdir()
-    report = report_dir / "result_run1.html"
-    report.write_text("<html>ok</html>", encoding="utf-8")
-    secret = tmp_path / "secret.txt"
-    secret.write_text("top secret", encoding="utf-8")
+def test_done_event_carries_the_report_url(runner_project):
+    """The stream's terminal event advertises the artifact URL for the toggle."""
+    from tests.conftest import runner_server
 
-    with _runs_lock:
-        _active_runs["run1"] = {"status": "completed", "logs": [], "report_path": str(report)}
-    monkeypatch.setattr(server_mod.state, "_scan_dir", str(tmp_path))
+    with runner_server(runner_project) as (client, manager):
+        identifier = run_id("7")
+        directory = manager.directory(identifier)
+        (directory / "html").mkdir(parents=True)
+        (directory / "html" / "report.html").write_text("<html>report</html>", encoding="utf-8")
+        make_run(manager, identifier, state="completed", report_path="html/report.html")
 
-    httpd = _with_server()
-    port = httpd.server_address[1]
-    try:
-        with pytest.raises(urllib.error.HTTPError) as excinfo:
-            _get(f"http://127.0.0.1:{port}/api/report/run1/../secret.txt")
-        assert excinfo.value.code == 404
-    finally:
-        httpd.shutdown()
-        httpd.server_close()
-        with _runs_lock:
-            _active_runs.pop("run1", None)
-
-
-def test_run_request_with_report_reports_url(tmp_path, monkeypatch):
-    """POST /api/run {"report": true} → the done event carries report_url."""
-    lines = ["running…"]
-
-    def fake_execute(run_id, nodeids, verbosity="verbose", html_report=False):
-        with _runs_lock:
-            info = _active_runs[run_id]
-            report_path = info.get("report_path")
-        if html_report and report_path:
-            report = Path(report_path)
-            report.parent.mkdir(parents=True, exist_ok=True)
-            report.write_text("<html>report</html>", encoding="utf-8")
-        with _runs_lock:
-            info["logs"].extend(lines)
-            info["status"] = "completed"
-            info["exit_code"] = 0
-
-    monkeypatch.setattr(server_mod, "_execute_tests", fake_execute)
-    monkeypatch.setattr(server_mod.state, "_scan_dir", str(tmp_path))
-
-    httpd = _with_server()
-    port = httpd.server_address[1]
-    run_id = None
-    try:
-        request = urllib.request.Request(
-            f"http://127.0.0.1:{port}/api/run",
-            data=json.dumps({"nodeids": ["a::b"], "verbosity": "quiet", "report": True}).encode(),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(request, timeout=5) as resp:
-            run_id = json.loads(resp.read())["run_id"]
-
-        events = []
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/stream/{run_id}", timeout=10) as resp:
-            for raw in resp:
-                text = raw.decode().strip()
+        with client.open_stream(identifier) as response:
+            events = []
+            for raw in response:
+                text = raw.decode("utf-8").strip()
                 if text.startswith("data: "):
-                    payload = json.loads(text[len("data: ") :])
+                    payload = json.loads(text[len("data: "):])
                     events.append(payload)
                     if payload.get("done"):
                         break
 
+        expected = f"/api/v1/runs/{identifier}/artifacts/html/report.html"
         assert events[-1]["done"] is True
-        assert events[-1]["report_url"] == f"/api/report/{run_id}"
+        assert events[-1]["report_url"] == expected
 
-        # and the URL actually serves the generated report
-        with _get(f"http://127.0.0.1:{port}{events[-1]['report_url']}") as resp:
-            assert b"report" in resp.read()
-    finally:
-        httpd.shutdown()
-        httpd.server_close()
-        if run_id is not None:
-            with _runs_lock:
-                _active_runs.pop(run_id, None)
+        with client.open(events[-1]["report_url"]) as response:
+            assert b"report" in response.read()
 
 
-def test_run_without_report_has_no_report_url(tmp_path, monkeypatch):
-    def fake_execute(run_id, nodeids, verbosity="verbose", html_report=False):
-        with _runs_lock:
-            info = _active_runs[run_id]
-            info["status"] = "completed"
-            info["exit_code"] = 0
+def test_run_without_a_report_has_no_report_url(runner):
+    client, manager = runner
+    identifier = run_id("6")
+    make_run(manager, identifier, state="completed", report_path=None)
 
-    monkeypatch.setattr(server_mod, "_execute_tests", fake_execute)
-    monkeypatch.setattr(server_mod.state, "_scan_dir", str(tmp_path))
-
-    httpd = _with_server()
-    port = httpd.server_address[1]
-    run_id = None
-    try:
-        request = urllib.request.Request(
-            f"http://127.0.0.1:{port}/api/run",
-            data=json.dumps({"nodeids": ["a::b"], "report": False}).encode(),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(request, timeout=5) as resp:
-            run_id = json.loads(resp.read())["run_id"]
-
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/stream/{run_id}", timeout=10) as resp:
-            for raw in resp:
-                text = raw.decode().strip()
-                if not text.startswith("data: "):
-                    continue
-                payload = json.loads(text[len("data: ") :])
+    with client.open_stream(identifier) as response:
+        events = []
+        for raw in response:
+            text = raw.decode("utf-8").strip()
+            if text.startswith("data: "):
+                payload = json.loads(text[len("data: "):])
+                events.append(payload)
                 if payload.get("done"):
-                    assert payload["report_url"] is None
                     break
-    finally:
-        httpd.shutdown()
-        httpd.server_close()
-        if run_id is not None:
-            with _runs_lock:
-                _active_runs.pop(run_id, None)
+
+    assert events[-1]["done"] is True
+    assert events[-1]["report_url"] is None
 
 
 # ── client UI ─────────────────────────────────────────────────────────────
 
 
 def test_html_has_report_toggle_and_button():
-    assert 'id="reportToggle"' in _FALLBACK_HTML
-    assert 'id="reportGroup"' in _FALLBACK_HTML
-    assert 'id="reportBtn"' in _FALLBACK_HTML
-    assert "REPORT_ENABLED_KEY" in _FALLBACK_HTML
-    assert "lounger.webRunner.reportEnabled" in _FALLBACK_HTML
-    assert "function setReportEnabled(" in _FALLBACK_HTML
-    assert "function showReportButton(" in _FALLBACK_HTML
-    assert "function openReport(" in _FALLBACK_HTML
+    assets = shell_assets()
+    assert 'id="reportToggle"' in assets
+    assert 'id="reportGroup"' in assets
+    assert 'id="reportBtn"' in assets
+    assert "REPORT_ENABLED_KEY" in assets
+    assert "lounger.webRunner.reportEnabled" in assets
+    assert "function setReportEnabled(" in assets
+    assert "function showReportButton(" in assets
+    assert "function openReport(" in assets
     # the request carries the checkbox state, the done event drives the button
-    assert "report: reportEnabled" in _FALLBACK_HTML
-    assert "showReportButton(msg.report_url || null)" in _FALLBACK_HTML
-    assert "window.open(currentReportUrl, '_blank'" in _FALLBACK_HTML
+    assert "report: reportEnabled" in assets
+    assert "showReportButton(msg.report_url || null)" in assets
+    assert "window.open(currentReportUrl, '_blank'" in assets
     # history detail can open the archived run's report too
-    assert 'id="historyReportBtn"' in _FALLBACK_HTML
-    assert "function openHistoryReport(" in _FALLBACK_HTML
+    assert 'id="historyReportBtn"' in assets
+    assert "function openHistoryReport(" in assets
 
 
 def test_report_toggle_preserves_quoted_project_options():
-    import shlex
-
     cleaned = test_execution.without_html_addopts('--html="reports/my report.html" -k "some test" --base-url "a b"')
     assert shlex.split(cleaned) == ["-k", "some test", "--base-url", "a b"]
 
 
 def test_pyproject_list_preserves_argument_boundaries(tmp_path):
-    import shlex
-
     (tmp_path / "pyproject.toml").write_text(
         '[tool.pytest.ini_options]\naddopts = ["-k", "some test", "--html=a b.html"]\n'
     )

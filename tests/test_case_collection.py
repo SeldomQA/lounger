@@ -10,14 +10,11 @@ whenever the reporting plugin was unavailable, and an inherited
 import json
 import os
 import subprocess
-import sys
-from pathlib import Path
 
 import pytest
 
 from lounger.services import case_discovery
-from tests.conftest import scratch_dir, REPO_ROOT
-
+from tests.conftest import scratch_dir
 
 # ── A3: child environment and project addopts ──────────────────────────────
 

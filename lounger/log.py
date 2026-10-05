@@ -20,7 +20,6 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from loguru import Logger
-
     from pytest_req.log import LogConfig
 
     log: Logger

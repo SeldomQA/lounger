@@ -17,7 +17,7 @@ import threading
 from pathlib import Path
 
 from lounger.services import case_discovery, test_execution
-from lounger.web_runner import html
+from tests.conftest import shell_assets
 
 # ── case_discovery: naming-rule pluginization ─────────────────────────────
 
@@ -158,16 +158,16 @@ def test_archive_run_trims_excess_finished_runs(tmp_path):
     assert len(archived) >= 3
 
 
-# ── html.py: data-ids encoding ────────────────────────────────────────────
+# ── front-end: data-ids encoding ──────────────────────────────────────────
 
 def test_html_data_ids_uses_encode_uri_component():
     """nodeids with quotes must not break the data-ids attribute (3.8 §4)."""
-    assert 'encodeURIComponent(JSON.stringify(node.cases.map(c => c.nodeid)))' in html._FALLBACK_HTML
-    assert 'data-ids="\' + idsJson' in html._FALLBACK_HTML.replace("'", "\u0027") or \
-        'data-ids="' in html._FALLBACK_HTML
-    assert "JSON.parse(decodeURIComponent(nodeidsStr))" in html._FALLBACK_HTML
+    assets = shell_assets()
+    assert 'encodeURIComponent(JSON.stringify(node.cases.map(c => c.nodeid)))' in assets
+    assert 'data-ids="' in assets
+    assert "JSON.parse(decodeURIComponent(nodeidsStr))" in assets
 
 
 def test_run_file_decodes_encoded_ids():
     """runFile must decode the URI-encoded ids before JSON.parse."""
-    assert "decodeURIComponent" in html._FALLBACK_HTML
+    assert "decodeURIComponent" in shell_assets()

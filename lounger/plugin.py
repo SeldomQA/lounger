@@ -68,6 +68,25 @@ class _LazyLogger:
     def __getattr__(self, name: str) -> Any:
         return getattr(self._target(), name)
 
+    def __setattr__(self, name: str, value: Any) -> None:
+        """
+        Forward attribute assignment to the real logger.
+
+        Tests and plugins legitimately patch ``lounger.plugin.log.warning`` (to
+        capture messages); a proxy that only forwards reads would raise
+        ``AttributeError: no __dict__ for setting new attributes``.
+        """
+        if name.startswith("__"):
+            object.__setattr__(self, name, value)
+            return
+        setattr(self._target(), name, value)
+
+    def __delattr__(self, name: str) -> None:
+        if name.startswith("__"):
+            object.__delattr__(self, name)
+            return
+        delattr(self._target(), name)
+
 
 #: Module-level logger used by the hooks below.
 log: Any = _LazyLogger()

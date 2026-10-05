@@ -12,7 +12,6 @@ import pytest
 from lounger.db_operation.base_db import SQLBase
 from lounger.db_operation.sqlite_db import SQLiteDB
 
-
 # ── value literals ─────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize(
