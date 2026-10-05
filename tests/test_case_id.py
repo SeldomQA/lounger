@@ -16,7 +16,6 @@ lookups.
 import contextlib
 import itertools
 import json
-import os
 import shutil
 from pathlib import Path
 
@@ -196,46 +195,39 @@ def test_yaml_metadata_keys_match_the_parametrize_id():
     assert metadata["datas/sample/test_alpha.yaml::case_1_First alpha case"]["name"] == "First alpha case"
 
 
-def test_manifest_takes_precedence_over_scanning():
-    with scratch_project() as project:
-        manifest_dir = project / ".lounger"
-        manifest_dir.mkdir()
-        (manifest_dir / "cases.json").write_text(
-            json.dumps(
-                {
-                    "version": "test",
-                    "cases": [
-                        {
-                            "params_id": "datas/sample/test_alpha.yaml::case_1_First alpha case",
-                            "file": "datas/sample/test_alpha.yaml",
-                            "name": "From manifest",
-                            "description": "From manifest",
-                        }
-                    ],
-                }
-            ),
-            encoding="utf-8",
-        )
+def test_manifest_takes_precedence_over_scanning(monkeypatch):
+    """The collected manifest wins over scanning the YAML files."""
+    monkeypatch.setattr(
+        case_discovery,
+        "collect_case_manifest",
+        lambda: [
+            {
+                "params_id": "datas/sample/test_alpha.yaml::case_1_First alpha case",
+                "file": "datas/sample/test_alpha.yaml",
+                "name": "From manifest",
+                "description": "From manifest",
+            }
+        ],
+    )
 
+    with scratch_project() as project:
         metadata = case_discovery._load_yaml_case_metadata(str(project))
 
     assert len(metadata) == 1
     assert metadata["datas/sample/test_alpha.yaml::case_1_First alpha case"]["name"] == "From manifest"
 
 
-@pytest.mark.parametrize("body", ["{not json", "[]", '{"cases": "nope"}', ""])
-def test_read_manifest_tolerates_bad_content(body):
+def test_scanning_is_the_fallback_when_nothing_was_collected(monkeypatch):
+    """Without a collection the YAML files still yield the same keys."""
+    monkeypatch.setattr(case_discovery, "collect_case_manifest", lambda: [])
+
     with scratch_project() as project:
-        manifest_dir = project / ".lounger"
-        manifest_dir.mkdir()
-        (manifest_dir / "cases.json").write_text(body, encoding="utf-8")
+        metadata = case_discovery._load_yaml_case_metadata(str(project))
 
-        assert case_discovery._read_manifest(str(project)) == {}
-
-
-def test_read_manifest_missing_file_is_empty():
-    with scratch_project() as project:
-        assert case_discovery._read_manifest(str(project)) == {}
+    assert set(metadata) == {
+        "datas/sample/test_alpha.yaml::case_1_First alpha case",
+        "datas/sample/test_alpha.yaml::case_2_Second alpha case",
+    }
 
 
 def test_discover_cases_attributes_without_any_entry_module_knowledge(monkeypatch):
@@ -263,68 +255,132 @@ def test_discover_cases_attributes_without_any_entry_module_knowledge(monkeypatc
     assert cases[1]["name"] == "test_ok"
 
 
-# ── producer: the manifest writer ─────────────────────────────────────────
+# ── producer: the manifest recorded during case loading ───────────────────
 
-class _FakeItem:
-    def __init__(self, nodeid, params):
-        self.nodeid = nodeid
-        self.callspec = type("Callspec", (), {"params": params})()
+def test_load_test_cases_records_the_manifest(monkeypatch):
+    """
+    ``load_test_cases`` records where each case came from, in memory.
 
+    The test session must not write the manifest file: the runner owns it (it
+    knows its own data directory, while a test run only knows its cwd). The
+    child process reports this list over stdout instead.
+    """
+    from lounger import analyze_cases
 
-def test_write_case_manifest_records_collected_items(monkeypatch):
-    """The manifest is derived from collected items, so it cannot drift."""
     with scratch_project() as project:
         (project / "test_suite.py").write_text("def test_suite():\n    pass\n", encoding="utf-8")
-        monkeypatch.setattr("lounger.settings.find_config_file", lambda: project / "config" / "config.yaml")
+        monkeypatch.chdir(project)
+        analyze_cases.reset_case_manifest()
 
-        import lounger.plugin as plugin
+        loaded = analyze_cases.load_test_cases()
+        manifest = analyze_cases.get_case_manifest()
 
-        param_id = "datas/sample/test_alpha.yaml::case_1_First alpha case"
-        item = _FakeItem(
-            f"test_suite.py::test_suite[{param_id}]",
-            {"teststeps": {"name": param_id, "steps": [{"step": "First alpha case"}], "file": "x.yaml"}},
-        )
-        plugin.write_case_manifest([item])
+    assert len(loaded) == len(manifest) == 2
+    assert manifest[0] == {
+        "params_id": loaded[0][0],
+        "file": "datas/sample/test_alpha.yaml",
+        "name": "First alpha case",
+        "description": "First alpha case",
+    }
+    assert manifest[0]["params_id"] == "datas/sample/test_alpha.yaml::case_1_First alpha case"
+    assert manifest[1]["params_id"] == "datas/sample/test_alpha.yaml::case_2_Second alpha case"
 
-        manifest = project / ".lounger" / "cases.json"
-        assert manifest.is_file()
-        payload = json.loads(manifest.read_text(encoding="utf-8"))
-        assert payload["cases"][0] == {
-            "nodeid": f"test_suite.py::test_suite[{param_id}]",
-            "params_id": param_id,
-            "file": "datas/sample/test_alpha.yaml",
-            "name": "First alpha case",
-            "description": "First alpha case",
+
+def test_manifest_keys_are_the_parametrize_ids(monkeypatch):
+    """The recorded ids are exactly what the entry module puts into the params id."""
+    from lounger import analyze_cases
+
+    with scratch_project() as project:
+        (project / "test_suite.py").write_text("def test_suite():\n    pass\n", encoding="utf-8")
+        monkeypatch.chdir(project)
+        analyze_cases.reset_case_manifest()
+        analyze_cases.load_test_cases()
+
+        indexed = case_discovery._manifest_index(analyze_cases.get_case_manifest())
+        scanned = case_discovery._get_yaml_case_metadata(str(project))
+
+    assert set(indexed) == set(scanned)
+    assert {k: v["name"] for k, v in indexed.items()} == {k: v["name"] for k, v in scanned.items()}
+
+
+def test_manifest_index_skips_malformed_entries():
+    """A partially written manifest must not shadow the file scan."""
+    assert case_discovery._manifest_index(
+        [
+            {"params_id": "a.yaml::case_1_x", "file": "a.yaml", "name": "From manifest"},
+            {"params_id": 42, "file": "b.yaml"},  # wrong type
+            {"file": "c.yaml"},  # no id
+            "not-a-dict",
+        ]
+    ) == {
+        "a.yaml::case_1_x": {
+            "file": "a.yaml",
+            "name": "From manifest",
+            "description": "From manifest",
         }
+    }
 
 
-def test_write_case_manifest_skips_non_yaml_items(monkeypatch):
-    with scratch_project() as project:
-        monkeypatch.setattr("lounger.settings.find_config_file", lambda: project / "config" / "config.yaml")
+# ── transport: the child reports cases and manifest on one stdout ─────────
 
-        import lounger.plugin as plugin
+def test_collection_output_splits_cases_and_manifest():
+    payload = '[{"nodeid": "a::b"}]'
+    manifest = [{"params_id": "a.yaml::case_1_x", "file": "a.yaml", "name": "x"}]
 
-        item = _FakeItem("test_plain.py::test_ok", {"params": "value"})
-        plugin.write_case_manifest([item])
+    cases, reported = case_discovery._parse_collection_output(
+        f"{payload}\n{case_discovery.MANIFEST_PREFIX}{json.dumps(manifest)}"
+    )
 
-        assert not (project / ".lounger" / "cases.json").exists()
+    assert cases == [{"nodeid": "a::b"}]
+    assert reported == manifest
 
 
-def test_write_case_manifest_is_best_effort(monkeypatch):
-    """A write failure must never propagate (read-only checkouts, CI sandboxes)."""
-    with scratch_project() as project:
-        monkeypatch.setattr("lounger.settings.find_config_file", lambda: project / "config" / "config.yaml")
+def test_collection_output_without_a_manifest_is_fine():
+    """Projects without YAML cases never print a MANIFEST line."""
+    cases, reported = case_discovery._parse_collection_output('[{"nodeid": "a::b"}]')
 
-        import lounger.plugin as plugin
+    assert cases == [{"nodeid": "a::b"}]
+    assert reported == []
 
-        param_id = "datas/sample/test_alpha.yaml::case_1_First alpha case"
-        item = _FakeItem(
-            f"test_suite.py::test_suite[{param_id}]",
-            {"teststeps": {"name": param_id, "steps": [{"step": "x"}], "file": "x.yaml"}},
-        )
 
-        def explode(*args, **kwargs):
-            raise OSError("read-only file system")
+def test_collection_output_tolerates_a_broken_manifest_line():
+    cases, reported = case_discovery._parse_collection_output(
+        '[{"nodeid": "a::b"}]\nMANIFEST {not json'
+    )
 
-        monkeypatch.setattr(os, "makedirs", explode)
-        plugin.write_case_manifest([item])  # must not raise
+    assert cases == [{"nodeid": "a::b"}]
+    assert reported == []
+
+
+def test_collection_output_still_reads_a_bare_json_document():
+    """An older child prints the JSON cases as the whole output."""
+    cases, reported = case_discovery._parse_collection_output('  [\n  {"nodeid": "a::b"}\n]  ')
+
+    assert cases == [{"nodeid": "a::b"}]
+    assert reported == []
+
+
+def test_collect_case_manifest_is_captured_by_the_parser(monkeypatch):
+    """The parsed manifest lands in the module state the runner reads."""
+    monkeypatch.setattr(
+        case_discovery.subprocess,
+        "run",
+        lambda *a, **k: type(
+            "Result",
+            (),
+            {
+                "returncode": 0,
+                "stdout": '[{"nodeid": "a::b"}]\nMANIFEST [{"params_id": "a.yaml::case_1_x", '
+                '"file": "a.yaml", "name": "x"}]',
+                "stderr": "",
+            },
+        )(),
+    )
+
+    cases = case_discovery._collect_via_subprocess(".")
+
+    assert cases == [{"nodeid": "a::b"}]
+    assert case_discovery.collect_case_manifest() == [
+        {"params_id": "a.yaml::case_1_x", "file": "a.yaml", "name": "x"}
+    ]
+

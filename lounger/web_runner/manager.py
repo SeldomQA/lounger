@@ -13,7 +13,8 @@ import time
 import uuid
 from typing import Any
 
-from lounger.services.case_discovery import discover_cases
+from lounger import __version__
+from lounger.services.case_discovery import collect_case_manifest, discover_cases
 from lounger.services.test_execution import (
     build_pytest_command,
     launch_pytest,
@@ -256,9 +257,33 @@ class RunManager:
         cases = self.collector(str(self.context.root))
         if not isinstance(cases, list) or any(not isinstance(c, dict) or "error" in c for c in cases):
             raise Problem("collection_failed", str(cases), 400)
+        self._persist_case_manifest(collect_case_manifest())
         with self.events.condition:
             self.cache, self.cache_time = cases, time.monotonic() if revision == self.events.sources else None
         return cases
+
+    def _persist_case_manifest(self, cases: list[dict]) -> None:
+        """
+        Store the YAML source metadata reported by the collection child.
+
+        The runner owns this file because the collection subprocess must not write
+        it: a ``--collect-only`` session collects no items, so a writer running
+        inside the test session overwrote a good manifest with an empty one. Only
+        an actual collection produces entries here, and the previous file is kept
+        when a collection legitimately finds no YAML cases.
+        """
+        if not cases:
+            return
+        target = self.context.data_dir / "cases.json"
+        payload = {"version": __version__, "cases": cases}
+        try:
+            self.context.data_dir.mkdir(parents=True, exist_ok=True)
+            tmp = target.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
+            os.replace(tmp, target)
+        except OSError as exc:
+            # Best effort: attribution falls back to decoding node IDs.
+            self.warnings.append(f"Case manifest not persisted: {exc}")
 
     def validate_tasks(self, task_ids):
         """Check a batch against ONE fresh collection, never confuse collection errors with missing cases."""

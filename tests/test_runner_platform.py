@@ -590,3 +590,53 @@ def test_quiet_overrides_project_and_environment_logging_but_keeps_failure(manag
     wait(manager)
     assert "FAILURE_REASON_MUST_REMAIN" in (manager.directory(failed["id"]) / "output.log").read_text(encoding="utf-8")
     assert manager.store.run(failed["id"])["outcome"] == "failed"
+
+
+# ── case manifest: the runner owns the file, the child owns the content ────
+
+MANIFEST_ENTRY = {
+    "params_id": "datas/sample/test_alpha.yaml::case_1_First alpha case",
+    "file": "datas/sample/test_alpha.yaml",
+    "name": "First alpha case",
+    "description": "First alpha case",
+}
+
+
+def test_collection_persists_the_reported_manifest(manager, monkeypatch):
+    """What the collection child reports is stored where the runner reads it."""
+    monkeypatch.setattr("lounger.web_runner.manager.collect_case_manifest", lambda: [MANIFEST_ENTRY])
+
+    manager.cases(refresh=True)
+
+    target = manager.context.data_dir / "cases.json"
+    payload = json.loads(target.read_text(encoding="utf-8"))
+    assert payload["cases"] == [MANIFEST_ENTRY]
+    assert payload["version"]
+
+
+def test_empty_manifest_keeps_the_previous_file(manager, monkeypatch):
+    """A collection that reports nothing must not truncate a good manifest."""
+    monkeypatch.setattr("lounger.web_runner.manager.collect_case_manifest", lambda: [MANIFEST_ENTRY])
+    manager.cases(refresh=True)
+    target = manager.context.data_dir / "cases.json"
+    before = target.read_text(encoding="utf-8")
+
+    monkeypatch.setattr("lounger.web_runner.manager.collect_case_manifest", lambda: [])
+    manager.cases(refresh=True)
+
+    assert target.read_text(encoding="utf-8") == before
+
+
+def test_manifest_write_failure_is_reported_not_raised(manager, monkeypatch):
+    """A read-only data directory must not break collection."""
+    monkeypatch.setattr("lounger.web_runner.manager.collect_case_manifest", lambda: [MANIFEST_ENTRY])
+
+    def explode(*args, **kwargs):
+        raise OSError("read-only file system")
+
+    monkeypatch.setattr("lounger.web_runner.manager.os.replace", explode)
+
+    cases = manager.cases(refresh=True)  # must not raise
+
+    assert cases == [{"nodeid": "test_sample.py::test_ok"}]
+    assert any("manifest" in warning.lower() for warning in manager.warnings)

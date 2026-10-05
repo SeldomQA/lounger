@@ -27,11 +27,6 @@ from typing import Callable
 
 from lounger.case_id import CASE_SUFFIX_RE, decode_nodeid, normalize_path
 
-#: Manifest written by ``lounger.plugin`` during collection, relative to the
-#: project root. Read-only for consumers; absent when collection did not run
-#: through pytest (or the tree is read-only).
-MANIFEST_RELPATH = (".lounger", "cases.json")
-
 #: Identifies a YAML case inside an entry-module parametrize id. Kept for
 #: reference/back-compat; matching itself goes through :func:`lounger.case_id.decode`.
 YAML_CASE_RE = CASE_SUFFIX_RE
@@ -60,9 +55,38 @@ def _sanitized_addopts(scan_dir: str) -> str:
         return ""
 
 
+#: Line prefix the collection child uses to report where each YAML case came from.
+MANIFEST_PREFIX = "MANIFEST "
+
+#: Metadata of the cases produced by the most recent collection (see
+#: :func:`collect_case_manifest`).
+_last_manifest: list[dict] = []
+
+
+def collect_case_manifest() -> list[dict]:
+    """
+    Return the YAML source metadata of the most recent collection.
+
+    The child process builds it from the cases it actually loaded (see
+    :func:`lounger.analyze_cases.get_case_manifest`) and prints it next to the
+    JSON result, so the runner can persist it. Returning it over stdout — instead
+    of letting the test session write the file — is what keeps a ``--collect-only``
+    run from overwriting a real manifest with an empty one.
+    """
+    return list(_last_manifest)
+
+
 def _collect_via_subprocess(scan_dir: str, timeout: int = 30) -> list[dict]:
     """
-    Run pytest --collect-only in a subprocess and parse the JSON output.
+    Run pytest --collect-only in a subprocess and parse its output.
+
+    The child prints the case JSON, and — when the project drives cases from YAML
+    — one ``MANIFEST <json>`` line carrying the source metadata of what it loaded.
+    The metadata is captured into :func:`collect_case_manifest` for the caller.
+
+    ``get_test_cases`` runs pytest in-process, and pytest takes over the stdout
+    file descriptor while it runs, so the manifest is written to a *duplicate* of
+    the original descriptor instead of through ``print``.
 
     The child environment is sanitised: ``PYTEST_ADDOPTS`` and
     ``PYTEST_DISABLE_PLUGIN_AUTOLOAD`` are inherited otherwise, so a parent
@@ -76,10 +100,17 @@ def _collect_via_subprocess(scan_dir: str, timeout: int = 30) -> list[dict]:
     :raises json.JSONDecodeError: If the subprocess output is not valid JSON.
     """
     script = (
+        "import json, os, sys\n"
         "from lounger.utils.collect import get_test_cases\n"
-        "import json, sys\n"
+        "from lounger.analyze_cases import get_case_manifest\n"
+        # Handed to the child's stdout; pytest redirects fd 1 while it collects.
+        "report = os.fdopen(os.dup(1), 'w', encoding='utf-8')\n"
         "cases = get_test_cases(sys.argv[1] if len(sys.argv) > 1 else '.')\n"
         "print(json.dumps(cases, ensure_ascii=False))\n"
+        "manifest = get_case_manifest()\n"
+        "if manifest:\n"
+        "    report.write(" + repr(MANIFEST_PREFIX) + " + json.dumps(manifest, ensure_ascii=False) + '\\n')\n"
+        "    report.flush()\n"
     )
     env = dict(os.environ)
     for inherited in ("PYTEST_ADDOPTS", "PYTEST_DISABLE_PLUGIN_AUTOLOAD"):
@@ -105,15 +136,44 @@ def _collect_via_subprocess(scan_dir: str, timeout: int = 30) -> list[dict]:
     stdout = result.stdout.strip()
     if not stdout:
         stdout = result.stderr.strip()
-    lines = stdout.split("\n")
-    for line in reversed(lines):
-        line = line.strip()
-        if line.startswith("[") and line.endswith("]"):
+
+    global _last_manifest
+    cases, _last_manifest = _parse_collection_output(stdout)
+    return cases
+
+
+def _parse_collection_output(stdout: str) -> tuple[list[dict], list[dict]]:
+    """
+    Split the child's stdout into ``(cases, manifest)``.
+
+    :param stdout: Raw subprocess output (the case JSON plus an optional
+        ``MANIFEST <json>`` line).
+    :raises json.JSONDecodeError: When no JSON array can be found.
+    """
+    cases: list[dict] | None = None
+    manifest: list[dict] = []
+    for raw_line in stdout.split("\n"):
+        line = raw_line.strip()
+        if line.startswith(MANIFEST_PREFIX):
             try:
-                return json.loads(line)
+                loaded = json.loads(line[len(MANIFEST_PREFIX):])
             except json.JSONDecodeError:
-                pass
-    return json.loads(stdout)
+                continue
+            if isinstance(loaded, list):
+                manifest = loaded
+            continue
+        if cases is None and line.startswith("[") and line.endswith("]"):
+            try:
+                parsed = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, list):
+                cases = parsed
+
+    if cases is None:
+        # Last resort: the whole output is the JSON document (older children).
+        cases = json.loads(stdout)
+    return cases, manifest
 
 
 def discover_cases(
@@ -191,28 +251,21 @@ def _load_yaml_case_metadata(scan_dir: str) -> dict:
     """
     Return the YAML case metadata of a project, keyed by parametrize id.
 
-    Prefers the manifest written during collection (exact, already aligned with
-    the entry module); falls back to scanning the YAML files with the same codec.
+    Prefers the manifest reported by the collection child (exact, already aligned
+    with the entry module); falls back to scanning the YAML files with the same
+    codec.
     """
-    manifest = _read_manifest(scan_dir)
+    manifest = _manifest_index(collect_case_manifest())
     return manifest if manifest else _get_yaml_case_metadata(scan_dir)
 
 
-def _read_manifest(scan_dir: str) -> dict:
-    """Read ``<scan_dir>/.lounger/cases.json`` if the plugin produced it."""
-    path = Path(scan_dir).joinpath(*MANIFEST_RELPATH)
-    try:
-        if path.stat().st_size > 16 * 1024 * 1024:
-            return {}
-        with open(path, "r", encoding="utf-8") as handle:
-            data = json.load(handle)
-    except (OSError, ValueError):
-        return {}
+def _manifest_index(cases: list[dict]) -> dict:
+    """
+    Index manifest entries by parametrize id.
 
-    cases = data.get("cases") if isinstance(data, dict) else None
-    if not isinstance(cases, list):
-        return {}
-
+    A manifest written before ``cases`` is empty must not shadow the file scan, so
+    malformed or non-YAML entries are simply skipped.
+    """
     metadata: dict = {}
     for entry in cases:
         if not isinstance(entry, dict):

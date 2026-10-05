@@ -275,71 +275,6 @@ def _trigger_after_case_finish(item, report) -> None:
     _case_results.append(result)
     run_after_case_finish(result)
 
-def write_case_manifest(items) -> None:
-    """
-    Record the source file of every YAML-driven case under ``<project>/.lounger``.
-
-    A YAML case's parametrize id already embeds its source file (see
-    :mod:`lounger.case_id`), so consumers can decode it. This manifest makes that
-    attribution exact — it is written from the *collected* items, so it cannot
-    drift from the entry module even if the entry file or function is renamed.
-
-    Best effort by design: a read-only or missing data directory must never fail
-    a test session.
-
-    :param items: Collected pytest items.
-    """
-    from lounger.case_id import case_metadata, decode, param_id_of
-    from lounger.settings import find_config_file
-
-    config_file = find_config_file()
-    project_root = config_file.parent.parent if config_file else None
-    if project_root is None:
-        return
-
-    cases = []
-    for item in items:
-        callspec = getattr(item, "callspec", None)
-        params = getattr(callspec, "params", None)
-        if not isinstance(params, dict):
-            continue
-        # YAML cases arrive through @load_teststeps(), i.e. the parametrize name
-        # used by analyze_cases ("teststeps").
-        case_data = next(
-            (params[key] for key in ("teststeps", "params") if isinstance(params.get(key), dict)),
-            None,
-        )
-        if case_data is None:
-            continue
-        decoded = decode(case_data.get("name", ""))
-        if decoded is None:
-            continue
-        steps = case_data.get("steps")
-        first_step = steps[0] if isinstance(steps, list) and steps else None
-        meta = case_metadata(decoded["file"], decoded["case_no"], first_step)
-        cases.append(
-            {
-                "nodeid": item.nodeid,
-                "params_id": param_id_of(item.nodeid) or meta["params_id"],
-                **meta,
-            }
-        )
-
-    if not cases:
-        return
-
-    data_dir = os.path.join(project_root, ".lounger")
-    payload = {"version": __version__, "cases": cases}
-    try:
-        os.makedirs(data_dir, exist_ok=True)
-        target = os.path.join(data_dir, "cases.json")
-        tmp = target + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as handle:
-            json.dump(payload, handle, ensure_ascii=False, indent=1)
-        os.replace(tmp, target)
-    except OSError as exc:
-        log.debug(f"Case manifest not written ({exc}); YAML attribution falls back to nodeid decoding")
-
 
 def pytest_addoption(parser: Any) -> None:
     """
@@ -456,8 +391,6 @@ def pytest_collection_modifyitems(config, items):
                 item._obj = types.MethodType(new_func, func.__self__)
             else:
                 item._obj = new_func
-
-    write_case_manifest(items)
 
     json_path = config.getoption("--run-json")
     if not json_path:

@@ -10,8 +10,6 @@ being labelled with its own case name.
 import json
 from types import SimpleNamespace
 
-import pytest
-
 from lounger import plugin
 
 
@@ -35,12 +33,6 @@ def _item(nodeid, params=None, doc="entry doc", name="test_yaml"):
     if params is not None:
         item.callspec = SimpleNamespace(params=params)
     return item
-
-
-@pytest.fixture(autouse=True)
-def _no_manifest(monkeypatch):
-    """The hook also writes a case manifest; keep the filesystem out of these tests."""
-    monkeypatch.setattr(plugin, "write_case_manifest", lambda items: None)
 
 
 YAML_CASE = {

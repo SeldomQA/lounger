@@ -35,7 +35,7 @@ def test_discover_cases_custom_naming_rule(tmp_path, monkeypatch):
     monkeypatch.setattr(case_discovery, "_get_yaml_case_metadata", lambda sd: {
         param_id: {"file": "datas/foo.yaml", "name": "自定义名", "description": "desc"},
     })
-    monkeypatch.setattr(case_discovery, "_read_manifest", lambda sd: {})
+    monkeypatch.setattr(case_discovery, "collect_case_manifest", lambda: [])
 
     def my_rule(nodeid, metadata):
         # pluginized naming rule: extract the parametrize id from the nodeid

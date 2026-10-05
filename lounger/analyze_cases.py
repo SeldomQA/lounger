@@ -4,10 +4,27 @@ from typing import Any, Dict, List, Optional, Tuple
 import pytest
 import yaml
 
-from lounger.case_id import encode, extract_step_name, normalize_path
+from lounger.case_id import case_metadata, encode, extract_step_name, normalize_path
 from lounger.commons.load_config import LoadConfig
 from lounger.commons.template_engine import validate_template_functions
 from lounger.log import log
+
+#: Metadata of the cases loaded by the most recent :func:`load_test_cases` call.
+#: The collection subprocess prints it for the runner to persist; it is never
+#: written to disk from inside the test session (a ``--collect-only`` run would
+#: otherwise overwrite a good manifest with an empty one).
+_last_manifest: List[Dict[str, Any]] = []
+
+
+def get_case_manifest() -> List[Dict[str, Any]]:
+    """Return the metadata of the cases loaded by the last :func:`load_test_cases`."""
+    return list(_last_manifest)
+
+
+def reset_case_manifest() -> None:
+    """Clear the recorded manifest (primarily for tests)."""
+    global _last_manifest
+    _last_manifest = []
 
 
 def relative_case_path(file_path: str, project_root: str) -> str:
@@ -160,6 +177,15 @@ def load_test_cases() -> List[Tuple[str, List[Dict], str]]:
             validate_template_functions(merged_steps, f"{case_relpath} case_{idx + 1}")
 
             testcases.append((test_name, merged_steps, file_path))
+
+    # Record the source-file metadata of what was loaded. Consumers (the runner's
+    # case tree, the platform API) read it from here instead of re-deriving it
+    # from node IDs, so attribution stays exact.
+    global _last_manifest
+    _last_manifest = [
+        case_metadata(relative_case_path(source_file, project_root), index + 1, steps[0] if steps else None)
+        for index, (_name, steps, source_file) in enumerate(testcases)
+    ]
 
     # Final summary
     if not testcases:
