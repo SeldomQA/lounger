@@ -63,15 +63,16 @@ function mutationButton(label, fn, disabled=false, title='') {const b=button(lab
 // Keep the original sidebar, top controls and tab-based runner layout.
 const legacyMain=document.querySelector('.main'), logContainer=$('historyLogContainer');
 const app=el('div','workbench');
-app.innerHTML=`<nav class="tab-bar app-nav" aria-label="工作台"><button class="tab-btn" id="tabLive" aria-label="实时日志" data-view="cases">📺 实时日志</button><button class="tab-btn" id="tabTasks" aria-label="测试任务" data-view="tasks">📋 测试任务</button><button class="tab-btn" id="tabHistory" aria-label="历史记录" data-view="runs">📜 历史记录</button></nav><div id="platformNotice" role="alert"></div><main class="workspace"><section id="viewCases" class="page live-page"></section><section id="viewTasks" class="page" hidden><header class="page-heading"><div><div class="eyebrow">TEST TASKS</div><h1>测试任务</h1><p class="muted">把常用用例保存为任务。代码发生变化后，先检查，再执行。</p></div><button id="newTask" class="btn btn-accent">新建任务</button></header><div class="list-toolbar"><input id="taskSearch" type="search" placeholder="搜索任务名称或描述" aria-label="搜索任务"><span id="validationSummary" class="muted"></span><button id="validateTasks" class="btn btn-outline">重新检查用例</button></div><div id="taskItems" class="table-scroll"></div><footer id="taskPager" class="pager"></footer></section>
+app.innerHTML=`<nav class="tab-bar app-nav" aria-label="工作台"><button class="tab-btn" id="tabLive" aria-label="实时日志" data-view="cases">📺 实时日志</button><button class="tab-btn" id="tabTasks" aria-label="测试任务" data-view="tasks">📋 测试任务</button><button class="tab-btn" id="tabHistory" aria-label="历史记录" data-view="runs">📜 历史记录</button><button class="tab-btn" id="tabConfig" aria-label="配置" data-view="config">⚙️ 配置</button></nav><div id="platformNotice" role="alert"></div><main class="workspace"><section id="viewCases" class="page live-page"></section><section id="viewTasks" class="page" hidden><header class="page-heading"><div><div class="eyebrow">TEST TASKS</div><h1>测试任务</h1><p class="muted">把常用用例保存为任务。代码发生变化后，先检查，再执行。</p></div><button id="newTask" class="btn btn-accent">新建任务</button></header><div class="list-toolbar"><input id="taskSearch" type="search" placeholder="搜索任务名称或描述" aria-label="搜索任务"><span id="validationSummary" class="muted"></span><button id="validateTasks" class="btn btn-outline">重新检查用例</button></div><div id="taskItems" class="table-scroll"></div><footer id="taskPager" class="pager"></footer></section>
 <section id="viewRuns" class="page" hidden><header class="page-heading"><div><div class="eyebrow">EXECUTION HISTORY</div><h1>历史记录</h1><p class="muted">每次执行都有独立的结果、日志和配置快照。</p></div><button id="refreshRuns" class="btn btn-outline">刷新记录</button></header><div class="list-toolbar run-filters"><select id="taskFilter" aria-label="筛选任务"><option value="">全部任务</option></select><select id="stateFilter" aria-label="运行状态"><option value="">全部状态</option><option value="running">运行中</option><option value="completed">已完成</option><option value="error">执行异常</option><option value="cancelled">已取消</option><option value="interrupted">已中断</option></select><select id="outcomeFilter" aria-label="测试结果"><option value="">全部结果</option><option value="passed">通过</option><option value="failed">失败</option><option value="unknown">未知</option></select><label>从 <input type="date" id="dateFrom" aria-label="起始日期"></label><label>至 <input type="date" id="dateTo" aria-label="结束日期"></label><button id="resetFilters" class="btn btn-ghost">重置</button></div><div id="historyList" class="table-scroll"></div><footer id="runPager" class="pager"></footer></section>
 <section id="viewRun" class="page run-page" hidden><button id="backToRuns" class="back-link">← 历史记录</button><header class="page-heading"><div><div class="title-with-status"><h1 id="runTitle"></h1><span id="runStatus"></span></div><p id="runMeta" class="muted"></p></div><div id="runActions" class="button-row"></div></header><div id="runError" class="inline-warning" hidden></div><div id="runOverview" class="metric-grid"></div><nav id="runTabs" class="detail-tabs" aria-label="执行详情"><button data-tab="results">用例结果</button><button data-tab="logs">执行日志</button><button data-tab="config">执行配置</button></nav><section id="resultPane" class="detail-pane"><div class="list-toolbar"><select id="resultFilter" aria-label="筛选用例结果"><option value="">全部结果</option><option value="unsuccessful">失败与错误</option><option value="passed">通过</option><option value="skipped">跳过</option></select><span id="resultHint" class="muted"></span></div><div id="runResults" class="results-list"></div><footer id="resultPager" class="pager"></footer></section><section id="logPane" class="detail-pane" hidden><div class="log-toolbar"><input id="logSearch" type="search" placeholder="筛选已加载日志" aria-label="搜索日志"><span id="logRange" class="muted"></span><button id="followLog" class="btn btn-outline" aria-pressed="true">跟随最新</button><button id="copyLog" class="btn btn-outline btn-copy">复制可见日志</button><a id="downloadLog" class="btn btn-outline" target="_blank" rel="noopener">完整日志 ↗</a></div><button id="earlierLogs" class="earlier-logs" hidden>向上滚动或点击载入更早日志</button><div id="copyFeedback" role="status" aria-live="polite" hidden></div><div id="logHost"></div><div id="streamStatus" class="stream-status" aria-live="polite"></div></section><section id="configPane" class="detail-pane config-pane" hidden></section></section>
-</main>`;
+<section id="viewConfig" class="page config-page" hidden></section></main>`;
 legacyMain.querySelector('.tab-bar').remove();
 legacyMain.append(app);
 $('viewCases').append($('logContainer'));
+$('viewConfig').append($('configPanel'));
 $('logHost').append(logContainer);
-for(const id of ['panelLive','panelHistory','panelHistoryDetail'])$(id).hidden=true;
+for(const id of ['panelLive','panelHistory','panelHistoryDetail','panelConfig'])$(id).hidden=true;
 for(const node of legacyMain.querySelectorAll('.tab-panel [id]'))if(app.querySelector('[id="'+node.id+'"]'))node.id='legacy-'+node.id;
 const taskTools=el('div','toolbar task-save-toolbar');
 taskTools.innerHTML='<span id="selectedCount" class="muted">已选 0 条</span><button id="saveSelection" class="btn btn-outline">保存为任务</button>';
@@ -134,7 +135,7 @@ function navigate(view, id=null, updateHash=true) {
   routeInitialized=true;
   if(view==='cases'&&(projectInfo?.active_run_id||liveRunId)){id=projectInfo?.active_run_id||liveRunId;view='run';}
   currentView=view;
-  for(const [name,node] of Object.entries({cases:'viewCases',tasks:'viewTasks',runs:'viewRuns',run:'viewRun'}))$(node).hidden=name!==view;
+  for(const [name,node] of Object.entries({cases:'viewCases',tasks:'viewTasks',runs:'viewRuns',run:'viewRun',config:'viewConfig'}))$(node).hidden=name!==view;
   document.querySelectorAll('.app-nav button').forEach(b=>{const active=b.dataset.view===(view==='run'?(id===liveRunId||id===projectInfo?.active_run_id?'cases':'runs'):view);b.classList.toggle('active',active);b.setAttribute('aria-current',active?'page':'false');});
   if(view!=='run'){detailVersion++;if(detailStream){detailStream.close();detailStream=null;}}
   if(updateHash)history.replaceState(null,'','#'+(view==='run'?'runs/'+id:view));
@@ -142,10 +143,11 @@ function navigate(view, id=null, updateHash=true) {
   if(view==='runs')loadHistory().catch(notice);
   if(view==='run')viewHistoryRun(id,id===liveRunId||id===projectInfo?.active_run_id).catch(notice);
   if(view==='cases')updateSelection();
+  if(view==='config')loadConfigView();
 }
 switchTab=tab=>navigate(tab==='history'?'runs':tab==='live'?'cases':tab);
 window.addEventListener('hashchange',()=>restoreRoute());
-function restoreRoute(){const [view,id]=location.hash.slice(1).split('/');navigate(view==='runs'&&id?'run':['cases','tasks','runs'].includes(view)?view:'cases',id,false);}
+function restoreRoute(){const [view,id]=location.hash.slice(1).split('/');navigate(view==='runs'&&id?'run':['cases','tasks','runs','config'].includes(view)?view:'cases',id,false);}
 function updateSelection(){
   $('selectedCount').textContent=`已选 ${selectedIds.size} 条`;
   $('saveSelection').disabled=selectedIds.size===0;
@@ -199,7 +201,7 @@ async function performTaskCheck(generation){
   }finally{$('validateTasks').disabled=false;await updateRunStatus();}
 }
 async function runTask(task){
-  try {const run=await api('tasks/'+task.id+'/runs',{...body('POST',{verbosity:currentVerbosity}),headers:{'Content-Type':'application/json','Idempotency-Key':crypto.randomUUID()}});liveRunId=run.id;navigate('run',run.id);}
+  try {const run=await api('tasks/'+task.id+'/runs',{...body('POST',{verbosity:currentVerbosity,env:runEnv}),headers:{'Content-Type':'application/json','Idempotency-Key':crypto.randomUUID()}});liveRunId=run.id;navigate('run',run.id);}
   catch(error){if(error.code==='selection_stale'){notice('代码已发生变化，请修复标出的失效用例后再运行。');await openTask(task);}else throw error;}
 }
 function setTaskFilter(task){const select=$('taskFilter');if(![...select.options].some(o=>o.value===task.id))select.add(new Option(task.name,task.id));select.value=task.id;runPage=1;}
@@ -374,7 +376,7 @@ function connectStream(id,version){
     if(msg.done){detailStream.close();detailStream=null;$('streamStatus').textContent='执行已结束 · 日志已保存';const run=await api('runs/'+id);if(version!==detailVersion)return;detailRun=run;renderRunHeader();await loadResults(version);await updateRunStatus();}
   };
 }
-startRun=async function(nodeids){try{if(!nodeids.length){notice('请先选择用例。');return;}const run=await api('runs',{...body('POST',{selection:{type:'nodeids',nodeids},options:{verbosity:currentVerbosity,html_report:reportEnabled}}),headers:{'Content-Type':'application/json','Idempotency-Key':crypto.randomUUID()}});liveRunId=run.id;navigate('run',run.id);}catch(error){notice(error.code==='selection_stale'?'所选用例已变化，请刷新用例列表后重新选择。':error);}};
+startRun=async function(nodeids){try{if(!nodeids.length){notice('请先选择用例。');return;}const run=await api('runs',{...body('POST',{selection:{type:'nodeids',nodeids},options:{verbosity:currentVerbosity,html_report:reportEnabled,env:runEnv}}),headers:{'Content-Type':'application/json','Idempotency-Key':crypto.randomUUID()}});liveRunId=run.id;navigate('run',run.id);}catch(error){notice(error.code==='selection_stale'?'所选用例已变化，请刷新用例列表后重新选择。':error);}};
 setRunButtonsDisabled=function(disabled){projectBusy=disabled;for(const id of ['runSelectedBtn','runAllBtn'])$(id).disabled=disabled;document.querySelectorAll('[data-run-action]').forEach(b=>b.disabled=disabled||b.dataset.blocked==='true');};
 let projectStream=null, seenSourceRevision=0, pendingSourceRefresh=false, sourceRefreshTimer=null;
 function applyProject(info){

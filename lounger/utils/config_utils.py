@@ -5,6 +5,10 @@ Supports layered loading of multiple config files: files are parsed in the
 order they are passed, and later files override same-named keys of earlier
 files (node-level deep merge).
 
+For a single file with ``environment`` and ``environments`` blocks,
+the saved ``environment`` selects the environment. The Web Runner can select
+a run environment through ``LOUNGER_ENV``. Literal legacy node reads are unchanged.
+
 Typical usage:
     config = ConfigUtils("config/config.yaml", "config/config.local.yaml")
     config.get_config("bff_develop")   # -> {"base_url": "...", "api_key": "...", ...}
@@ -17,6 +21,7 @@ Merge rules (node-level deep merge):
       (e.g. base has bff_develop: https://..., local has bff_develop: {auth: ...})
     - otherwise: override fully replaces base
 """
+import copy
 import os
 from typing import Any, Dict, Optional, Tuple
 
@@ -57,7 +62,11 @@ def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> None:
             _deep_merge(base_value, value)
         elif isinstance(value, dict) and isinstance(base_value, str):
             # URL shorthand: a plain string in base is treated as the node's base_url
-            base[key] = {"base_url": base_value, **value}
+            base[key] = {"base_url": base_value, **copy.deepcopy(value)}
+        elif isinstance(value, dict):
+            # Copy: parsed files are cached and shared across instances, so a
+            # later layer must never mutate an earlier layer's cached mapping.
+            base[key] = copy.deepcopy(value)
         else:
             base[key] = value
 
@@ -89,6 +98,17 @@ class ConfigUtils:
                 log.warning(f"Configuration file is not a mapping: {path}")
                 continue
             _deep_merge(merged, data)
+        if isinstance(merged.get("environments"), dict) and "environment" in merged:
+            # Named environments in one file. The runner selects a run
+            # without rewriting the saved default or adding overlay files.
+            selected = os.environ.get("LOUNGER_ENV") or merged["environment"]
+            environments = merged["environments"]
+            if not isinstance(selected, str) or selected not in environments:
+                raise ValueError("请选择 config/config.yaml 中已定义的环境")
+            services = environments[selected]
+            if not isinstance(services, dict):
+                raise ValueError("当前环境必须包含服务配置")
+            merged["environment"] = selected
         return merged
 
     def is_exists(self) -> bool:

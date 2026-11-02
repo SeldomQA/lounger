@@ -23,6 +23,7 @@ from lounger.services.test_execution import (
     without_html_addopts,
 )
 
+from .config_document import ConfigDocument
 from .context import ProjectContext, ProjectLock
 from .events import Events, ProjectWatcher
 from .results import parse_junit
@@ -50,9 +51,16 @@ def validate_definition(data, task=False):
         raise Problem("invalid_options", "Invalid verbosity")
     if not isinstance(options.get("html_report", False), bool):
         raise Problem("invalid_options", "html_report must be a boolean")
+    env_name = options.get("env") or ""
+    if not isinstance(env_name, str) or len(env_name) > 64 or any(c in env_name for c in "\n\r\t "):
+        raise Problem("invalid_options", "环境名称无效")
     item: dict[str, Any] = dict(
         selection={"type": "nodeids", "nodeids": list(dict.fromkeys(ids))},
-        options={"verbosity": options.get("verbosity", "quiet"), "html_report": options.get("html_report", False)},
+        options={
+            "verbosity": options.get("verbosity", "quiet"),
+            "html_report": options.get("html_report", False),
+            "env": env_name,
+        },
     )
     if task:
         name, description = data.get("name"), data.get("description", "")
@@ -116,6 +124,7 @@ class RunManager:
             self.events.publish(source=True)
 
     def project(self):
+        document = ConfigDocument.load(self.context.root)
         return dict(
             id=self.store.project_id,
             name=self.context.root.name,
@@ -127,6 +136,8 @@ class RunManager:
             warnings=list(self.warnings),
             blocked=list(self.blocked),
             sources_revision=self.events.sources,
+            env=document.environment(),
+            envs=document.environments(),
         )
 
     def directory(self, run_id):
@@ -332,7 +343,7 @@ class RunManager:
             )
         return {"checked_at": checked, "items": items}
 
-    def start(self, data, task_id=None, key=None, verbosity_override=None):
+    def start(self, data, task_id=None, key=None, verbosity_override=None, execution_options=None):
         if key and len(key) > 256:
             raise Problem("invalid_key", "Idempotency key exceeds 256 characters")
         definition = validate_definition(data)
@@ -341,6 +352,9 @@ class RunManager:
             request = validate_definition(
                 {**definition, "options": {**definition["options"], "verbosity": verbosity_override}}
             )
+        if execution_options:
+            request = validate_definition({**request, "options": {**request["options"], **execution_options}})
+        ConfigDocument.load(self.context.root).environment(request["options"]["env"] or None)
         digest = hashlib.sha256(
             json.dumps({"request": request, "task_id": task_id}, sort_keys=True).encode()
         ).hexdigest()
@@ -445,6 +459,10 @@ class RunManager:
             cmd[0] = self.context.python
             cmd.extend([f"--junit-xml={directory / 'junit.xml'}", "-o", "junit_logging=all"])
             env = {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"}
+            # Pass the runner selection independently of pytest --env filtering.
+            selected_env = ConfigDocument.load(self.context.root).environment(options.get("env") or None)
+            if selected_env:
+                env["LOUNGER_ENV"] = selected_env
             # PYTEST_ADDOPTS can also request HTML output; obey the UI toggle there.
             if not html and env.get("PYTEST_ADDOPTS"):
                 env["PYTEST_ADDOPTS"] = without_html_addopts(env["PYTEST_ADDOPTS"])

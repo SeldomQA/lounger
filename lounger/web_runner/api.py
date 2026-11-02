@@ -11,6 +11,7 @@ from importlib.resources import files
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
+from .config_document import ConfigDocument
 from .http_base import BaseHandler
 from .manager import ANSI, validate_definition
 from .storage import TERMINAL, Problem
@@ -144,6 +145,15 @@ class PlatformHandler(BaseHandler):
         manager, store = self.manager, self.manager.store
         if parts == ["project"] and method == "GET":
             return self.reply(manager.project())
+        if parts == ["config", "document"]:
+            document = ConfigDocument.load(manager.context.root)
+            if method == "GET":
+                return self.reply(document.view())
+            if method == "PATCH":
+                data = self.body()
+                return self.reply(document.mutate(
+                    data.get("action"), data.get("path"), data.get("value"), data.get("revision"), data.get("key")
+                ))
         if parts == ["project", "events"] and method == "GET":
             return self.project_stream()
         if parts in (["cases", "tree"], ["cases", "refresh"]):
@@ -180,6 +190,7 @@ class PlatformHandler(BaseHandler):
                         task_id,
                         self.headers.get("Idempotency-Key"),
                         verbosity_override=data.get("verbosity", "quiet"),
+                        execution_options={"env": data["env"]} if "env" in data else None,
                     ),
                     202,
                 )
@@ -338,7 +349,11 @@ class PlatformHandler(BaseHandler):
             item = manager.start(
                 dict(
                     selection={"nodeids": ids},
-                    options={"verbosity": data.get("verbosity", "verbose"), "html_report": bool(data.get("report"))},
+                    options={
+                        "verbosity": data.get("verbosity", "verbose"),
+                        "html_report": bool(data.get("report")),
+                        "env": data.get("env") or "",
+                    },
                 )
             )
             return self.reply(dict(run_id=item["id"], count=len(ids), status="running"))

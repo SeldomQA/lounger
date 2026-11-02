@@ -143,3 +143,56 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 ::-webkit-scrollbar-thumb:hover { background: rgba(108,112,134,.55); }
 ::-webkit-scrollbar-corner { background: transparent; }
 * { scrollbar-width: thin; scrollbar-color: rgba(108,112,134,.35) transparent; }
+
+/* ── configuration panel ─────────────────────────────────────────────── */
+.config-panel { padding: 12px 16px; overflow: auto; height: 100%; }
+.config-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+#viewConfig { overflow: auto; }
+#viewConfig .config-panel { padding: 0; overflow: visible; }
+
+.config-description { font-size: 12px; margin: 8px 0 16px; }
+.config-toolbar input[type=search] { flex: 1; min-width: 140px; }
+.config-tree { min-width: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--surface); }
+.config-group > summary { display: flex; align-items: center; gap: 12px; padding: 11px 18px; cursor: pointer; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--accent) 3%, var(--surface)); }
+.config-group > summary::before { content: '▸'; color: var(--muted); font-size: 11px; }
+.config-group[open] > summary::before { content: '▾'; }
+.config-group-title { font-family: monospace; font-size: 13px; overflow-wrap: anywhere; }
+.config-group-title,.config-field-name > strong { display: inline-flex; align-items: center; gap: 7px; }
+.config-node-icon { display: inline-flex; width: 16px; height: 16px; flex-shrink: 0; color: var(--muted); }
+.config-node-icon svg { width: 100%; height: 100%; }
+.config-node-icon.folder { color: #c58a18; }
+.config-node-icon.list { color: var(--accent); }
+.config-group > summary .config-entry-actions { margin-left: auto; padding: 0; }
+.config-children { margin-left: 16px; border-left: 1px solid var(--border); }
+.config-entry { display: grid; grid-template-columns: minmax(100px, .8fr) minmax(140px, 2fr) auto; align-items: start; gap: 16px; padding: 15px 18px; border-bottom: 1px solid var(--border); }
+.config-entry:last-child { border-bottom: 0; }
+.config-entry.dirty { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.config-field-name { display: flex; flex-direction: column; gap: 5px; padding-top: 8px; overflow-wrap: anywhere; }
+.config-field-name strong { font-family: monospace; font-size: 12px; }
+.config-field-name small { color: var(--muted); font-size: 10px; }
+.config-type { color: var(--muted); font-size: 10px; }
+.config-input-host { min-width: 0; }
+.config-input-host .config-inline-input { width: 100%; box-sizing: border-box; font-size: 12px; font-family: monospace; padding: 9px 11px; border-radius: 6px; background: var(--bg); }
+.config-entry-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding-top: 2px; }
+.config-entry-actions .btn { padding: 7px 10px; font-size: 11px; }
+.config-btn-add,.config-btn-edit { color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.config-btn-save { color: #fff; background: #16803d; border: 1px solid #16803d; }
+.config-btn-delete { color: var(--red); border: 1px solid color-mix(in srgb, var(--red) 38%, transparent); background: color-mix(in srgb, var(--red) 8%, transparent); }
+.config-btn-reset { color: var(--muted); background: transparent; border: 1px solid var(--border); }
+.config-inline-error { display: block; color: var(--red); font-size: 11px; padding-top: 6px; }
+.config-inline-error:empty { display: none; }
+.config-empty { padding: 24px; color: var(--muted); font-size: 12px; }
+.config-type-options,.config-inline-boolean { display: flex; flex-wrap: wrap; gap: 8px; border: 0; padding: 0; margin: 0; }
+.config-type-options legend { margin-bottom: 8px; font-size: 12px; }
+.config-editor .config-type-options label,.config-inline-boolean label { display: flex; flex-direction: row; align-items: center; gap: 6px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font-size: 12px; }
+.config-type-options label:has(input:checked),.config-inline-boolean label:has(input:checked) { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.config-editor { width: min(520px, 90vw); padding: 24px; }
+.config-editor form { display: flex; flex-direction: column; gap: 14px; }
+.config-editor label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.config-editor textarea { width: 100%; box-sizing: border-box; }
+.config-editor-error { color: var(--red); font-size: 12px; white-space: pre-wrap; }
+.config-editor-error:empty { display: none; }
+.config-feedback { font-size: 12px; color: var(--green); }
+.config-feedback.error { color: var(--red); }
+.config-feedback:empty { display: none; }
+@media(max-width: 850px) { .config-entry { grid-template-columns: 1fr; gap: 8px; } .config-field-name { flex-direction: row; align-items: center; } .config-children { margin-left: 10px; } }

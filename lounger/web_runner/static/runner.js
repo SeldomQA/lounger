@@ -281,10 +281,13 @@ function startSidebarResize(event) {
 function switchTab(tab) {
   document.getElementById('tabLive').classList.toggle('active', tab === 'live');
   document.getElementById('tabHistory').classList.toggle('active', tab === 'history');
+  document.getElementById('tabConfig').classList.toggle('active', tab === 'config');
   document.getElementById('panelLive').classList.toggle('active', tab === 'live');
   document.getElementById('panelHistory').classList.toggle('active', tab === 'history');
+  document.getElementById('panelConfig').classList.toggle('active', tab === 'config');
   document.getElementById('panelHistoryDetail').classList.remove('active');
   if (tab === 'history') loadHistory();
+  if (tab === 'config') loadConfigView();
 }
 function showHistoryDetail() {
   document.getElementById('panelHistory').classList.remove('active');
@@ -680,7 +683,12 @@ async function startRun(nodeids) {
   const resp = await fetch('/api/run', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({nodeids, verbosity: currentVerbosity, report: reportEnabled})
+    body: JSON.stringify({
+      nodeids,
+      verbosity: currentVerbosity,
+      report: reportEnabled,
+      env: runEnv
+    })
   });
   const data = await resp.json();
   if (data.error) { alert(data.error); return; }
@@ -794,3 +802,381 @@ function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').repl
 const reportToggleEl = document.getElementById('reportToggle');
 if (reportToggleEl) reportToggleEl.checked = reportEnabled;
 // Platform bootstrap restores project preferences and loads initial data.
+
+
+// Configuration editing and environment selection.
+
+let RUN_ENV_KEY = 'lounger.runner.env';
+
+let runEnv = '';
+let configDocument = null;
+let configEditOperation = null;
+
+let configRequestVersion = 0;
+
+async function configFetch(path, options) {
+  const opts = options || {};
+  const headers = opts.headers || {};
+  if (opts.method && opts.method !== 'GET') {
+    const meta = document.querySelector('meta[name="lounger-token"]');
+    if (meta) headers['X-Lounger-Token'] = meta.content;
+  }
+  if (opts.body) headers['Content-Type'] = 'application/json';
+  const response = await fetch(path, {...opts, headers});
+  if (!response.ok) {
+    let message = 'HTTP ' + response.status;
+    try { const payload = await response.json(); message = (payload.error && payload.error.message) || message; } catch (_) {}
+    throw new Error(message);
+  }
+  return response.json();
+}
+
+function setRunEnv(value) {
+  runEnv = value || '';
+  configFeedback('');
+  try { localStorage.setItem(RUN_ENV_KEY, runEnv); } catch (_) {}
+  loadConfigView();
+}
+
+function initEnvSelect(project) {
+  const select = document.getElementById('envSelect');
+  if (!select) return;
+  const envs = (project && project.envs) || [];
+  RUN_ENV_KEY = 'lounger.runner.env:' + ((project && project.path) || '');
+  try { runEnv = localStorage.getItem(RUN_ENV_KEY) || ''; } catch (_) {}
+  const active = envs.includes(runEnv) ? runEnv : ((project && project.env) || '');
+  const options = envs.length ? [...envs] : [''];
+  if (active && options.indexOf(active) === -1) options.push(active);
+  select.replaceChildren(...options.map(name => {
+    const option = document.createElement('option');
+    option.value = name;
+    option.textContent = name ? name : '(默认环境)';
+    if (name === active) option.selected = true;
+    return option;
+  }));
+  runEnv = active;
+}
+
+function configFeedback(message, error = false) {
+  const host = document.getElementById('configFeedback');
+  host.textContent = message;
+  host.classList.toggle('error', error);
+}
+
+function configPath(path) {
+  return path.length ? path.map(part => typeof part === 'number' ? '[' + part + ']' : String(part)).join(' / ') : '全部配置';
+}
+
+function configNodeIcon(node) {
+  const icon = document.createElement('span');
+  const group = node.kind === 'object';
+  const list = node.kind === 'array';
+  icon.className = 'config-node-icon ' + (group ? 'folder' : list ? 'list' : 'file');
+  icon.title = group ? '包含子级的分组' : list ? '列表配置' : node.path.length <= 1 ? '根配置项' : '配置项';
+  icon.setAttribute('aria-hidden', 'true');
+  const shape = group
+    ? '<path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/>'
+    : list ? '<path d="M9 6h12M9 12h12M9 18h12M3 6h1M3 12h1M3 18h1"/>'
+      : '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M8 13h8M8 17h6"/>';
+  icon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + shape + '</svg>';
+  return icon;
+}
+
+const configInlineDrafts = new Map();
+const configExpandedGroups = new Map();
+let configSearchActive = false;
+let configInlineSaving = false;
+const configKindNames = {object:'分组',array:'列表',string:'文本',number:'数字',boolean:'布尔',null:'空值',readonly:'只读'};
+
+function configAction(label, action, path) {
+  const button = document.createElement('button');
+  const tone = ({新增:'add',保存:'save',编辑:'edit',删除:'delete',撤销:'reset',打开:'edit'})[label] || 'edit';
+  button.className = 'btn btn-sm config-btn-' + tone;
+  button.type = 'button';
+  button.textContent = label;
+  button.setAttribute('aria-label', label + ' ' + configPath(path));
+  button.onclick = event => { event.preventDefault(); event.stopPropagation(); action(); };
+  return button;
+}
+
+async function reloadConfigDocument() {
+  if (configInlineDrafts.size && !confirm('放弃未保存的修改并刷新配置？')) return;
+  configInlineDrafts.clear();
+  configFeedback('');
+  await loadConfigView();
+}
+
+function renderConfigDocument() {
+  if (!configDocument) return;
+  const host = document.getElementById('configTree');
+  const query = document.getElementById('configSearch').value.toLowerCase().trim();
+  // Native details toggle events are queued. Capture the current DOM state
+  // before a search/save replaces it, even when the toggle event has not fired.
+  if (!configSearchActive) {
+    host.querySelectorAll('details[data-path]').forEach(group => configExpandedGroups.set(group.dataset.path, group.open));
+  }
+  configSearchActive = Boolean(query);
+  const matches = node => configPath(node.path).toLowerCase().includes(query)
+    || String(node.value ?? '').toLowerCase().includes(query)
+    || (node.children || []).some(matches);
+  function render(node) {
+    if (query && !matches(node)) return null;
+    if (!['object','array'].includes(node.kind)) return renderInlineConfigField(node, false);
+    const group = document.createElement('details');
+    group.className = 'config-group';
+    group.dataset.path = JSON.stringify(node.path);
+    group.dataset.key = node.path.join('.');
+    const key = JSON.stringify(node.path);
+    group.open = Boolean(query) || (configExpandedGroups.has(key) ? configExpandedGroups.get(key) : node.path.length < 2);
+    group.addEventListener('toggle', () => {
+      if (group.isConnected && !query) configExpandedGroups.set(key, group.open);
+    });
+    const header = document.createElement('summary');
+    header.setAttribute('aria-label', '分组 ' + configPath(node.path));
+    const title = document.createElement('strong');
+    title.className = 'config-group-title';
+    title.append(configNodeIcon(node), document.createTextNode(typeof node.path.at(-1) === 'number' ? '[' + node.label + ']' : node.label));
+    const kind = document.createElement('span');
+    kind.className = 'config-type';
+    kind.textContent = configKindNames[node.kind] + ' · ' + node.children.length;
+    const actions = document.createElement('span');
+    actions.className = 'config-entry-actions';
+    actions.append(configAction('新增', () => openConfigEditor(node, true), node.path));
+    if (node.path.length) actions.append(configAction('删除', () => deleteConfigItem(node), node.path));
+    header.append(title, kind, actions);
+    const children = document.createElement('div');
+    children.className = 'config-children';
+    children.append(...node.children.map(render).filter(Boolean));
+    if (!node.children.length) {
+      const empty = document.createElement('p');
+      empty.className = 'config-empty';
+      empty.textContent = '暂无配置项，点击新增开始。';
+      children.append(empty);
+    }
+    group.append(header, children);
+    return group;
+  }
+  const tree = configDocument.tree;
+  const nodes = ['object','array'].includes(tree.kind) ? tree.children : [tree];
+  const rows = nodes.map(render).filter(Boolean);
+  host.replaceChildren(...rows);
+  if (!rows.length) {
+    const empty = document.createElement('p');
+    empty.className = 'config-empty';
+    empty.textContent = query ? '没有匹配的配置项。' : '暂无配置项，点击新增配置开始。';
+    host.append(empty);
+  }
+  document.getElementById('configAddRoot').disabled = !['object','array'].includes(tree.kind);
+}
+
+function renderInlineConfigField(node, showPath) {
+  const row = document.createElement('div');
+  row.className = 'config-entry';
+  row.dataset.path = JSON.stringify(node.path);
+  row.dataset.key = node.path.join('.');
+  const name = document.createElement('div');
+  name.className = 'config-field-name';
+  const label = document.createElement('strong');
+  label.append(configNodeIcon(node), document.createTextNode(typeof node.path.at(-1) === 'number' ? '[' + node.label + ']' : node.label));
+  const kind = document.createElement('span');
+  kind.className = 'config-type';
+  kind.textContent = configKindNames[node.kind];
+  name.append(label, kind);
+  if (showPath) {
+    const path = document.createElement('small');
+    path.textContent = configPath(node.path.slice(0,-1));
+    name.append(path);
+  }
+  const key = JSON.stringify(node.path);
+  const existing = configInlineDrafts.get(key);
+  const original = node.kind === 'null' ? '' : String(node.value ?? '');
+  const inputHost = document.createElement('div');
+  inputHost.className = 'config-input-host';
+  let read;
+  let focus;
+  if (node.kind === 'boolean') {
+    const options = document.createElement('fieldset');
+    options.className = 'config-inline-boolean';
+    options.setAttribute('aria-label', '配置值 ' + configPath(node.path));
+    for (const value of ['true','false']) {
+      const label = document.createElement('label');
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.name = 'config-inline-' + key;
+      radio.value = value;
+      radio.checked = value === (existing ? existing.value : original);
+      radio.setAttribute('aria-label', configPath(node.path) + ' ' + value);
+      label.append(radio, document.createTextNode(value));
+      options.append(label);
+    }
+    inputHost.append(options);
+    read = () => options.querySelector('input:checked').value;
+    focus = options;
+  } else {
+    const input = document.createElement(node.kind === 'string' && String(node.value).includes('\n') ? 'textarea' : 'input');
+    if (input.tagName === 'INPUT') { input.type = node.kind === 'number' ? 'number' : 'text'; input.step = 'any'; }
+    else input.rows = 3;
+    input.className = 'config-inline-input';
+    input.setAttribute('aria-label', '配置值 ' + configPath(node.path));
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.value = existing ? existing.value : original;
+    input.placeholder = node.kind === 'null' ? 'null' : '未填写';
+    input.disabled = ['null','readonly'].includes(node.kind);
+    input.onkeydown = event => { if (event.key === 'Enter' && (input.tagName === 'INPUT' || event.ctrlKey || event.metaKey)) { event.preventDefault(); save.click(); } };
+    inputHost.append(input);
+    read = () => input.value;
+    focus = input;
+  }
+  const error = document.createElement('small');
+  error.className = 'config-inline-error';
+  inputHost.append(error);
+  const actions = document.createElement('div');
+  actions.className = 'config-entry-actions';
+  const save = configAction('保存', () => saveInlineConfigField(node, read(), save, error), node.path);
+  const undo = configAction('撤销', () => { configInlineDrafts.delete(key); renderConfigDocument(); }, node.path);
+  const update = () => {
+    const value = read();
+    if (value === original) configInlineDrafts.delete(key);
+    else configInlineDrafts.set(key, {value, revision: existing?.revision || configDocument.revision});
+    const dirty = configInlineDrafts.has(key);
+    row.classList.toggle('dirty', dirty);
+    save.disabled = !dirty || configInlineSaving;
+    undo.hidden = !dirty;
+  };
+  focus.addEventListener('input', update);
+  update();
+  if (node.kind !== 'readonly') actions.append(save, undo, configAction('编辑', () => openConfigEditor(node), node.path));
+  if (node.path.length) actions.append(configAction('删除', () => deleteConfigItem(node), node.path));
+  row.append(name, inputHost, actions);
+  return row;
+}
+
+async function saveInlineConfigField(node, input, button, error) {
+  if (configInlineSaving || button.disabled) return;
+  const draft = configInlineDrafts.get(JSON.stringify(node.path));
+  if (!draft || draft.revision !== configDocument.revision) {
+    error.textContent = '配置已变化，请撤销后重新修改，或刷新配置。';
+    return;
+  }
+  error.textContent = '';
+  configInlineSaving = true;
+  document.querySelectorAll('#configTree .config-btn-save').forEach(button => { button.disabled = true; });
+  try {
+    let value = input;
+    if (node.kind === 'number') {
+      value = Number(input);
+      if (!input.trim() || !Number.isFinite(value)) throw new Error('请输入有效数字');
+    } else if (node.kind === 'boolean') value = input === 'true';
+    const revision = configDocument.revision;
+    const result = await configFetch('/api/v1/config/document', {
+      method:'PATCH', body:JSON.stringify({action:'set',path:node.path,value,revision})
+    });
+    configDocument.revision = result.revision;
+    node.value = value;
+    configInlineDrafts.delete(JSON.stringify(node.path));
+    for (const other of configInlineDrafts.values()) if (other.revision === revision) other.revision = result.revision;
+    configFeedback('已保存 ' + configPath(node.path));
+    try { initEnvSelect(await configFetch('/api/v1/project')); } catch (_) {}
+  } catch (failure) {
+    error.textContent = failure.message;
+    configFeedback('保存失败：' + failure.message, true);
+  } finally {
+    configInlineSaving = false;
+    // Keep the editor and error visible when a save fails.
+    if (!error.textContent) renderConfigDocument();
+    else document.querySelectorAll('#configTree .config-btn-save').forEach(button => {
+      const path = button.closest('[data-path]')?.dataset.path;
+      button.disabled = !configInlineDrafts.has(path);
+    });
+  }
+}
+
+async function loadConfigView() {
+  const version = ++configRequestVersion;
+  try {
+    const view = await configFetch('/api/v1/config/document');
+    if (version !== configRequestVersion) return null;
+    configDocument = view;
+    renderConfigDocument();
+    return view;
+  } catch (error) {
+    if (version === configRequestVersion) configFeedback('读取配置失败：' + error.message, true);
+    return null;
+  }
+}
+
+async function openConfigEditor(node, add = false) {
+  if (configInlineDrafts.size) { configFeedback('请先保存或撤销未保存的修改，再调整配置结构。', true); return; }
+  const revision = configDocument.revision;
+  let value = node.value;
+  configEditOperation = {action: add ? 'add' : 'set', path: [...node.path], revision};
+  document.getElementById('configEditorTitle').textContent = add ? '新增配置' : '编辑配置';
+  document.getElementById('configEditorPath').textContent = configPath(node.path);
+  document.getElementById('configKeyGroup').hidden = !add || node.kind !== 'object';
+  document.getElementById('configItemKey').value = '';
+  document.querySelector('#configItemTypes input[value="' + (add ? 'string' : node.kind) + '"]').checked = true;
+  document.getElementById('configItemValue').value = add || value == null ? '' : String(value);
+  document.querySelector('input[name=configItemBoolean][value="' + String(Boolean(value)) + '"]').checked = true;
+  document.getElementById('configEditorError').textContent = '';
+  updateConfigValueInput();
+  document.getElementById('configEditor').showModal();
+}
+
+function updateConfigValueInput() {
+  const kind = document.querySelector('input[name=configItemType]:checked').value;
+  document.getElementById('configValueGroup').hidden = !['string', 'number'].includes(kind);
+  document.getElementById('configBooleanGroup').hidden = kind !== 'boolean';
+}
+
+async function refreshConfigAfterSave() {
+  await loadConfigView();
+  try { initEnvSelect(await configFetch('/api/v1/project')); }
+  catch (_) { /* The editor also supports configurations outside the runner's environment convention. */ }
+  configFeedback('配置已保存，后续运行使用保存的值。');
+}
+
+async function saveConfigItem(event) {
+  event.preventDefault();
+  const operation = configEditOperation;
+  const kind = document.querySelector('input[name=configItemType]:checked').value;
+  const input = document.getElementById('configItemValue').value;
+  let value = input;
+  const save = document.getElementById('configItemSave');
+  save.disabled = true;
+  try {
+    if (kind === 'number') {
+      value = Number(input);
+      if (!input.trim() || !Number.isFinite(value)) throw new Error('请输入有效数字');
+    } else if (kind === 'boolean') value = document.querySelector('input[name=configItemBoolean]:checked').value === 'true';
+    else if (kind === 'null') value = null;
+    else if (kind === 'object') value = {};
+    else if (kind === 'array') value = [];
+    await configFetch('/api/v1/config/document', {
+      method: 'PATCH', body: JSON.stringify({...operation, key: document.getElementById('configItemKey').value, value})
+    });
+    await refreshConfigAfterSave();
+    document.getElementById('configEditor').close();
+  } catch (error) { document.getElementById('configEditorError').textContent = error.message; }
+  finally { save.disabled = false; }
+}
+
+async function deleteConfigItem(node) {
+  if (configInlineDrafts.size) { configFeedback('请先保存或撤销未保存的修改，再删除配置。', true); return; }
+  if (!confirm('删除配置项「' + configPath(node.path) + '」？')) return;
+  try {
+    await configFetch('/api/v1/config/document', {
+      method: 'PATCH', body: JSON.stringify({action:'delete', path:node.path, revision:configDocument.revision})
+    });
+    await refreshConfigAfterSave();
+  } catch (error) { configFeedback(error.message, true); }
+}
+
+async function initConfiguration() {
+  try {
+    const project = await configFetch('/api/v1/project');
+    initEnvSelect(project);
+  } catch (error) { configFeedback('读取运行配置失败：' + error.message, true); }
+  await loadConfigView();
+}
+initConfiguration();
