@@ -3,7 +3,15 @@ Case discovery — collect test cases and enrich YAML-driven cases.
 
 Shared by the web runner and the platform script (docs/development_plan.md
 §3.8).  Collecting is delegated to a pytest subprocess; the result is
-validated and optionally enriched with YAML case metadata.
+validated and enriched with YAML case metadata.
+
+YAML attribution no longer guesses at the entry module. A YAML case's parametrize
+id embeds its source file (see :mod:`lounger.case_id`), so the source file is
+recovered by *decoding* the node ID. Sources are read, in order of preference:
+
+1. ``<data_dir>/cases.json`` — a manifest persisted by the runner after
+   collection (exact ids, no parsing);
+2. the YAML files under ``datas/``, keyed by the same codec.
 
 Errors are returned as structured dicts (``{"error": ...}``) instead of
 printing to stderr, so any front-end can surface them.
@@ -11,15 +19,18 @@ printing to stderr, so any front-end can surface them.
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
 from pathlib import Path
 from typing import Callable
 
-#: Fallback naming rule for YAML-driven parametrized cases when no YAML
-#: metadata matches: ``<file>::<case>(...::case_<n>_...)``
-YAML_NODEID_RE = re.compile(r"^test_api\.py::test_api\[(.+?::case_\d+_.+?)\]$")
+from lounger.case_id import CASE_SUFFIX_RE, decode_nodeid, normalize_path
+
+#: Identifies a YAML case inside an entry-module parametrize id. Kept for
+#: reference/back-compat; matching itself goes through :func:`lounger.case_id.decode`.
+YAML_CASE_RE = CASE_SUFFIX_RE
 
 #: Pluggable naming rule: ``(nodeid, metadata) -> dict | None``.
 #: Return a dict of case fields (file/name/description) to override, or None
@@ -28,12 +39,64 @@ CaseNamingRule = Callable[[str, dict], dict | None]
 
 
 class CaseCollectionError(RuntimeError):
-    """pytest could not collect the project; its diagnostic is not a JSON error."""
+    """pytest collection failed; retain its diagnostic instead of reporting invalid JSON."""
+
+
+def _sanitized_addopts(scan_dir: str) -> str:
+    """
+    Return the project's ``addopts`` with plugin-dependent options removed.
+
+    Collection only needs to *find* tests, but pytest applies the project's
+    ``addopts`` first. A checkout whose ``pytest.ini`` requests ``--html`` aborts
+    collection with ``unrecognized arguments`` whenever the reporting plugin is
+    not installed — making collection success depend on the environment. Report
+    options are therefore stripped and applied via ``-o addopts=...``.
+    """
+    from lounger.services.test_execution import read_project_addopts, without_html_addopts
+
+    try:
+        return without_html_addopts(read_project_addopts(scan_dir))
+    except Exception:  # noqa: BLE001 - a malformed config must not break collection
+        return ""
+
+
+#: Line prefix the collection child uses to report where each YAML case came from.
+MANIFEST_PREFIX = "MANIFEST "
+
+#: Metadata of the cases produced by the most recent collection (see
+#: :func:`collect_case_manifest`).
+_last_manifest: list[dict] = []
+
+
+def collect_case_manifest() -> list[dict]:
+    """
+    Return the YAML source metadata of the most recent collection.
+
+    The child process builds it from the cases it actually loaded (see
+    :func:`lounger.analyze_cases.get_case_manifest`) and prints it next to the
+    JSON result, so the runner can persist it. Returning it over stdout — instead
+    of letting the test session write the file — is what keeps a ``--collect-only``
+    run from overwriting a real manifest with an empty one.
+    """
+    return list(_last_manifest)
 
 
 def _collect_via_subprocess(scan_dir: str, timeout: int = 30) -> list[dict]:
     """
-    Run pytest --collect-only in a subprocess and parse the JSON output.
+    Run pytest --collect-only in a subprocess and parse its output.
+
+    The child prints the case JSON, and — when the project drives cases from YAML
+    — one ``MANIFEST <json>`` line carrying the source metadata of what it loaded.
+    The metadata is captured into :func:`collect_case_manifest` for the caller.
+
+    ``get_test_cases`` runs pytest in-process, and pytest takes over the stdout
+    file descriptor while it runs, so the manifest is written to a *duplicate* of
+    the original descriptor instead of through ``print``.
+
+    The child environment is sanitised: ``PYTEST_ADDOPTS`` and
+    ``PYTEST_DISABLE_PLUGIN_AUTOLOAD`` are inherited otherwise, so a parent
+    invocation could silently change or break the child (the latter disables the
+    plugins the project's own ``addopts`` may need).
 
     :param scan_dir: Project root directory (where config/config.yaml lives).
     :param timeout: Subprocess timeout in seconds.
@@ -41,9 +104,14 @@ def _collect_via_subprocess(scan_dir: str, timeout: int = 30) -> list[dict]:
     :raises subprocess.TimeoutExpired: If collection exceeds the timeout.
     :raises json.JSONDecodeError: If the subprocess output is not valid JSON.
     """
+    global _last_manifest
+    _last_manifest = []
     script = (
+        "import contextlib, io, json, os, sys\n"
         "from lounger.utils.collect import get_test_cases\n"
-        "import contextlib, io, json, sys\n"
+        "from lounger.analyze_cases import get_case_manifest\n"
+        # Handed to the child's stdout; pytest redirects fd 1 while it collects.
+        "report = os.fdopen(os.dup(1), 'w', encoding='utf-8')\n"
         "output = io.StringIO()\n"
         "try:\n"
         "    with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):\n"
@@ -53,36 +121,74 @@ def _collect_via_subprocess(scan_dir: str, timeout: int = 30) -> list[dict]:
         "    print(str(exc), file=sys.stderr)\n"
         "    sys.exit(1)\n"
         "print(json.dumps(cases, ensure_ascii=False))\n"
+        "manifest = get_case_manifest()\n"
+        "if manifest:\n"
+        "    report.write(" + repr(MANIFEST_PREFIX) + " + json.dumps(manifest, ensure_ascii=False) + '\\n')\n"
+        "    report.flush()\n"
     )
+    env = dict(os.environ)
+    for inherited in ("PYTEST_ADDOPTS", "PYTEST_DISABLE_PLUGIN_AUTOLOAD"):
+        env.pop(inherited, None)
+    addopts = _sanitized_addopts(scan_dir)
+    if addopts:
+        # pytest applies the ini's ``addopts`` *before* PYTEST_ADDOPTS, so the
+        # original value has to be replaced for the report flags to disappear:
+        # ``-o addopts=`` overrides the ini entry outright.
+        env["PYTEST_ADDOPTS"] = f"-o addopts={addopts}"
+
     result = subprocess.run(
         [sys.executable, "-c", script, scan_dir],
         cwd=scan_dir,
         capture_output=True,
         text=True,
         timeout=timeout,
+        env=env,
     )
 
     if result.returncode != 0:
         output = "\n".join(part for part in (result.stdout, result.stderr) if part)
         output = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", output)
-        # Config/fixture import errors often include credentials in traceback
-        # source lines. Redact known values before exposing the diagnostic.
-        from lounger.config import Config
-
-        output = Config(Path(scan_dir)).redact(output)
         raise CaseCollectionError(output[-6000:] or f"pytest collection failed (exit code {result.returncode})")
     stdout = result.stdout.strip()
     if not stdout:
         stdout = result.stderr.strip()
-    lines = stdout.split("\n")
-    for line in reversed(lines):
-        line = line.strip()
-        if line.startswith("[") and line.endswith("]"):
+
+    cases, _last_manifest = _parse_collection_output(stdout)
+    return cases
+
+
+def _parse_collection_output(stdout: str) -> tuple[list[dict], list[dict]]:
+    """
+    Split the child's stdout into ``(cases, manifest)``.
+
+    :param stdout: Raw subprocess output (the case JSON plus an optional
+        ``MANIFEST <json>`` line).
+    :raises json.JSONDecodeError: When no JSON array can be found.
+    """
+    cases: list[dict] | None = None
+    manifest: list[dict] = []
+    for raw_line in stdout.split("\n"):
+        line = raw_line.strip()
+        if line.startswith(MANIFEST_PREFIX):
             try:
-                return json.loads(line)
+                loaded = json.loads(line[len(MANIFEST_PREFIX):])
             except json.JSONDecodeError:
-                pass
-    return json.loads(stdout)
+                continue
+            if isinstance(loaded, list):
+                manifest = loaded
+            continue
+        if cases is None and line.startswith("[") and line.endswith("]"):
+            try:
+                parsed = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, list):
+                cases = parsed
+
+    if cases is None:
+        # Last resort: the whole output is the JSON document (older children).
+        cases = json.loads(stdout)
+    return cases, manifest
 
 
 def discover_cases(
@@ -111,7 +217,7 @@ def discover_cases(
     except OSError as e:
         return {"error": f"Case collection failed: {e}"}
 
-    metadata = _get_yaml_case_metadata(scan_dir)
+    metadata = _load_yaml_case_metadata(scan_dir)
     if metadata:
         rule = yaml_naming_rule or _yaml_metadata_rule
         cases = [_apply_naming_rule(case, metadata, rule) for case in cases]
@@ -128,34 +234,84 @@ def _apply_naming_rule(case: dict, metadata: dict, rule: CaseNamingRule) -> dict
 
 def _yaml_metadata_rule(nodeid: str, metadata: dict) -> dict | None:
     """
-    Default naming rule: look the parametrized nodeid up in YAML metadata.
+    Default naming rule: attribute a YAML case to its source file.
+
+    The node ID is *decoded* (never pattern-guessed), so the entry module and
+    function may be renamed freely.
 
     This is the fallback "generic rule" — projects may pass their own
     ``yaml_naming_rule`` to :func:`discover_cases` to change how YAML cases
     are re-parented to their source files.
     """
-    m = YAML_NODEID_RE.match(nodeid)
-    if not m:
+    decoded = decode_nodeid(nodeid)
+    if decoded is None:
         return None
-    param_key = m.group(1)
-    meta = metadata.get(param_key)
-    if not meta:
-        return None
-    return {
-        "file": meta["file"],
-        "name": meta["name"],
-        "description": meta.get("description"),
-    }
+
+    param_id = nodeid[nodeid.rfind("[") + 1 : -1]
+    meta = metadata.get(param_id) or metadata.get(decoded["file"])
+    if meta and "file" in meta:
+        return {
+            "file": meta["file"],
+            "name": meta.get("name") or decoded["step_name"],
+            "description": meta.get("description"),
+        }
+
+    # The codec recognised the case but no metadata file/entry matches (the YAML
+    # was edited between collection and enrichment): attribute it by the path
+    # encoded in the id rather than silently dropping the attribution.
+    return {"file": decoded["file"], "name": decoded["step_name"]}
 
 
 # ── YAML metadata ─────────────────────────────────────────────────────────
 
+def _load_yaml_case_metadata(scan_dir: str) -> dict:
+    """
+    Return the YAML case metadata of a project, keyed by parametrize id.
+
+    Prefers the manifest reported by the collection child (exact, already aligned
+    with the entry module); falls back to scanning the YAML files with the same
+    codec.
+    """
+    manifest = _manifest_index(collect_case_manifest())
+    return manifest if manifest else _get_yaml_case_metadata(scan_dir)
+
+
+def _manifest_index(cases: list[dict]) -> dict:
+    """
+    Index manifest entries by parametrize id.
+
+    A manifest written before ``cases`` is empty must not shadow the file scan, so
+    malformed or non-YAML entries are simply skipped.
+    """
+    metadata: dict = {}
+    for entry in cases:
+        if not isinstance(entry, dict):
+            continue
+        params_id = entry.get("params_id")
+        file_rel = entry.get("file")
+        if not isinstance(params_id, str) or not isinstance(file_rel, str):
+            continue
+        metadata[params_id] = {
+            "file": normalize_path(file_rel),
+            "name": entry.get("name") or params_id,
+            "description": entry.get("description") or entry.get("name") or params_id,
+        }
+    return metadata
+
+
 def _get_yaml_case_metadata(scan_dir: str) -> dict:
-    """Parse YAML test case files from datas/ and return a metadata mapping."""
+    """
+    Derive YAML case metadata from the files under ``datas/``.
+
+    Keys are built with :mod:`lounger.case_id`, i.e. exactly what the entry
+    module puts into the parametrize id, so lookup is an exact match.
+    """
     try:
         import yaml
     except ImportError:
         return {}
+
+    from lounger.case_id import case_metadata
 
     scan_path = Path(scan_dir)
     datas_dir = scan_path / "datas"
@@ -176,8 +332,7 @@ def _get_yaml_case_metadata(scan_dir: str) -> dict:
         if not isinstance(data, list):
             continue
 
-        filename = yaml_file.stem
-        rel_path = str(yaml_file.relative_to(scan_path))
+        rel_path = normalize_path(os.path.relpath(yaml_file, scan_path))
 
         for idx, block in enumerate(data):
             if not isinstance(block, dict) or "teststeps" not in block:
@@ -186,19 +341,11 @@ def _get_yaml_case_metadata(scan_dir: str) -> dict:
             if not isinstance(steps, list) or len(steps) == 0:
                 continue
 
-            first_step = steps[0]
-            display_name = (
-                first_step.get("step")
-                or first_step.get("name")
-                or f"测试用例 {idx + 1}"
-            )
-            step_name = first_step.get("name") or "step_1"
-            case_id = f"{filename}::case_{idx + 1}_{step_name}"
-
-            metadata[case_id] = {
-                "file": rel_path,
-                "name": display_name,
-                "description": display_name,
+            meta = case_metadata(rel_path, idx + 1, steps[0])
+            metadata[meta["params_id"]] = {
+                "file": meta["file"],
+                "name": meta["name"],
+                "description": meta["description"],
             }
 
     return metadata
