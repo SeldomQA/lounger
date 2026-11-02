@@ -17,9 +17,12 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-__version__ = "1.7.1"
+if TYPE_CHECKING:
+    from .pytest_extend.params import data, file_data
+
+__version__ = "1.8.0"
 
 __all__ = ["data", "file_data", "__version__"]
 
