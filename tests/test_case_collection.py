@@ -107,7 +107,7 @@ def test_collection_failure_reports_the_stderr(monkeypatch):
 
     monkeypatch.setattr(case_discovery.subprocess, "run", fake_run)
 
-    with pytest.raises(ValueError, match="unrecognized arguments"):
+    with pytest.raises(case_discovery.CaseCollectionError, match="unrecognized arguments"):
         case_discovery._collect_via_subprocess(".")
 
 

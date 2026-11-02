@@ -57,6 +57,149 @@ def save_smoke_task(page):
 
 
 @pytest.mark.integration
+def test_generic_config_editor_manages_arbitrary_keys_and_lists(workbench):
+    import yaml
+    from playwright.sync_api import expect
+
+    page, manager, errors, tmp_path = workbench
+    directory = tmp_path / "config"
+    directory.mkdir()
+    path = directory / "config.yaml"
+    source = (
+        "# Keep this comment\ncustom:\n  auth: original-token\n  timeout: 10\n"
+        "  endpoints:\n    - https://one.example.test\nlegacy: unchanged\n"
+    )
+    path.write_text(source)
+    page.reload()
+    expect(page.locator("#runCreds")).to_have_count(0)
+    assert page.evaluate("typeof collectRunCredentials") == "undefined"
+    page.get_by_role("button", name="配置", exact=True).click()
+    expect(page.locator("#configTree")).to_contain_text("custom")
+    current = page.get_by_role("textbox", name="配置值 custom / auth", exact=True)
+    expect(current).to_have_value("original-token")
+    current.fill("updated-token")
+    page.get_by_role("button", name="保存 custom / auth", exact=True).click()
+    expect(page.locator("#configFeedback")).to_contain_text("已保存 custom / auth")
+    assert yaml.safe_load(path.read_text())["custom"]["auth"] == "updated-token"
+    expect(page.locator("#configEditor")).not_to_be_visible()
+    page.get_by_role("button", name="新增配置", exact=True).click()
+    page.locator("#configItemKey").fill("retries")
+    page.get_by_role("radio", name="数字", exact=True).check()
+    page.locator("#configItemValue").fill("5")
+    page.locator("#configEditor").get_by_role("button", name="保存", exact=True).click()
+    expect(page.locator("#configEditor")).not_to_be_visible()
+    assert yaml.safe_load(path.read_text())["retries"] == 5
+    page.locator('details[data-key="custom.endpoints"] > summary').click()
+    page.get_by_role("button", name="新增 custom / endpoints", exact=True).click()
+    page.locator("#configItemValue").fill("https://two.example.test")
+    page.locator("#configEditor").get_by_role("button", name="保存", exact=True).click()
+    expect(page.locator("#configEditor")).not_to_be_visible()
+    assert yaml.safe_load(path.read_text())["custom"]["endpoints"] == ["https://one.example.test", "https://two.example.test"]
+    page.once("dialog", lambda dialog: dialog.accept())
+    page.get_by_role("button", name="删除 custom / endpoints / [0]", exact=True).click()
+    expect(page.get_by_role("button", name="删除 custom / endpoints / [1]", exact=True)).to_have_count(0)
+    assert yaml.safe_load(path.read_text())["custom"]["endpoints"] == ["https://two.example.test"]
+    assert path.read_text().startswith("# Keep this comment")
+    assert yaml.safe_load(path.read_text())["legacy"] == "unchanged"
+    assert not (manager.context.data_dir / "config.overrides.yaml").exists()
+    page.reload()
+    expect(page.locator("#viewConfig")).to_be_visible()
+    assert not errors
+
+
+@pytest.mark.integration
+def test_inline_config_saves_preserve_other_drafts_and_report_conflicts(workbench):
+    import yaml
+    from playwright.sync_api import expect
+
+    page, _, errors, tmp_path = workbench
+    directory = tmp_path / "config"
+    directory.mkdir()
+    path = directory / "config.yaml"
+    path.write_text("settings:\n  auth: original-token\n  timeout: 10\n  enabled: false\n")
+    page.reload()
+    page.get_by_role("button", name="配置", exact=True).click()
+    expect(page.locator("#configTree details")).to_have_count(1)
+    expect(page.locator(".config-navigation")).to_have_count(0)
+    page.locator("#themeToggle").click()
+    page.screenshot(path=str(tmp_path / "inline-values.png"), full_page=True)
+    token = page.get_by_role("textbox", name="配置值 settings / auth", exact=True)
+    timeout = page.get_by_role("spinbutton", name="配置值 settings / timeout", exact=True)
+    token.fill("new-token")
+    timeout.fill("25")
+    page.get_by_role("button", name="保存 settings / auth", exact=True).click()
+    expect(page.locator("#configFeedback")).to_contain_text("已保存 settings / auth")
+    expect(timeout).to_have_value("25")
+    timeout.fill("")
+    page.get_by_role("button", name="保存 settings / timeout", exact=True).click()
+    error = page.locator('[data-key="settings.timeout"] .config-inline-error')
+    expect(error).to_have_text("请输入有效数字")
+    timeout.fill("25")
+    page.get_by_role("button", name="保存 settings / timeout", exact=True).click()
+    expect(page.locator("#configFeedback")).to_contain_text("已保存 settings / timeout")
+    expect(error).to_have_text("")
+    assert yaml.safe_load(path.read_text())["settings"]["timeout"] == 25
+    page.get_by_role("radio", name="settings / enabled true", exact=True).check()
+    page.get_by_role("button", name="保存 settings / enabled", exact=True).click()
+    expect(page.locator("#configFeedback")).to_contain_text("已保存 settings / enabled")
+    assert yaml.safe_load(path.read_text())["settings"]["enabled"] is True
+    page.get_by_role("button", name="编辑 settings / timeout", exact=True).click()
+    expect(page.locator("#configItemTypes input[type=radio]")).to_have_count(6)
+    page.screenshot(path=str(tmp_path / "type-options.png"), full_page=True)
+    page.get_by_role("radio", name="文本", exact=True).check()
+    page.locator("#configItemValue").fill("text timeout")
+    page.locator("#configEditor").get_by_role("button", name="保存", exact=True).click()
+    expect(page.locator("#configEditor")).not_to_be_visible()
+    assert yaml.safe_load(path.read_text())["settings"]["timeout"] == "text timeout"
+    token.fill("unsaved-token")
+    path.write_text(path.read_text().replace("new-token", "manual-token"))
+    page.get_by_role("button", name="保存 settings / auth", exact=True).click()
+    expect(page.locator("#configFeedback")).to_contain_text("保存失败")
+    expect(token).to_have_value("unsaved-token")
+    assert yaml.safe_load(path.read_text())["settings"]["auth"] == "manual-token"
+    assert not errors
+
+
+@pytest.mark.integration
+def test_config_editor_handles_environment_structure_without_special_ui(workbench):
+    import yaml
+    from playwright.sync_api import expect
+
+    page, manager, errors, tmp_path = workbench
+    directory = tmp_path / "config"
+    directory.mkdir()
+    path = directory / "config.yaml"
+    path.write_text(
+        "environment: develop\nenvironments:\n"
+        "  develop:\n    bff:\n      base_url: https://develop.example.test\n      auth: develop-token\n"
+        "  prod:\n    bff:\n      base_url: https://prod.example.test\n      auth: prod-token\n"
+    )
+    page.reload()
+    page.get_by_role("button", name="配置", exact=True).click()
+    page.locator('details[data-key="environments.develop"] > summary').click()
+    page.locator('details[data-key="environments.develop.bff"] > summary').click()
+    token = page.get_by_role("textbox", name="配置值 environments / develop / bff / auth", exact=True)
+    token.fill("updated-develop-token")
+    page.get_by_role("button", name="保存 environments / develop / bff / auth", exact=True).click()
+    expect(page.locator("#configFeedback")).to_contain_text("已保存 environments / develop / bff / auth")
+    expect(token).to_be_visible()
+    expect(page.locator('details[data-key="environments.develop.bff"]')).to_have_attribute("open", "")
+    page.locator('details[data-key="environments.develop.bff"] > summary').click()
+    page.get_by_role("searchbox", name="搜索配置", exact=True).fill("develop / bff / auth")
+    expect(token).to_be_visible()
+    page.get_by_role("searchbox", name="搜索配置", exact=True).fill("")
+    expect(token).not_to_be_visible()
+    page.get_by_role("textbox", name="配置值 environment", exact=True).fill("prod")
+    page.get_by_role("button", name="保存 environment", exact=True).click()
+    expect(page.locator("#configFeedback")).to_have_text("已保存 environment")
+    assert yaml.safe_load(path.read_text())["environment"] == "prod"
+    page.get_by_role("searchbox", name="搜索配置", exact=True).fill("prod")
+    expect(page.get_by_role("textbox", name="配置值 environments / prod / bff / base_url", exact=True)).to_have_value("https://prod.example.test")
+    expect(page.get_by_role("textbox", name="配置值 environments / develop / bff / base_url", exact=True)).to_have_count(0)
+    assert not errors
+
+
+@pytest.mark.integration
 def test_task_to_report_browser_flow(workbench):
     from playwright.sync_api import expect
 

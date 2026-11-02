@@ -58,6 +58,41 @@ def definition():
     )
 
 
+def test_generic_config_document_http_supports_custom_structures_and_requires_auth(http):
+    call, manager, _ = http
+    status, initial = call("/api/v1/config/document")
+    assert status == 200 and initial["exists"] is False
+    change = {"action": "add", "path": [], "key": "custom", "value": {"items": [1, True], "token": "fake-http-token"},
+              "revision": initial["revision"]}
+    assert call("/api/v1/config/document", "PATCH", change, auth=False)[0] == 403
+    assert call("/api/v1/config/document", "PATCH", change)[0] == 200
+    status, view = call("/api/v1/config/document")
+    assert status == 200 and "fake-http-token" in json.dumps(view)
+    assert call("/api/v1/config/document", "PATCH", change)[0] == 409
+    edit = {"action": "set", "path": ["custom", "items", 1], "value": False, "revision": view["revision"]}
+    assert call("/api/v1/config/document", "PATCH", edit)[0] == 200
+    import yaml
+
+    assert yaml.safe_load((manager.context.root / "config/config.yaml").read_text())["custom"]["items"] == [1, False]
+    assert not (manager.context.data_dir / "config.overrides.yaml").exists()
+
+
+def test_runner_routes_do_not_reuse_removed_credential_overrides(http):
+    call, manager, _ = http
+    request = {"selection": {"nodeids": ["test_demo.py::test_ok"]},
+               "options": {"credentials": {"bff.auth": "old-run-only-token"}}}
+    status, run = call("/api/v1/runs", "POST", request)
+    assert status == 202 and "credentials" not in run["request"]["options"]
+    manager.thread.join(15)
+    status, rerun = call("/api/v1/runs", "POST", {"rerun_id": run["id"]})
+    assert status == 202 and "credentials" not in rerun["request"]["options"]
+    manager.thread.join(15)
+    _, task = call("/api/v1/tasks", "POST", {"name": "Old task", **request})
+    status, task_run = call("/api/v1/tasks/" + task["id"] + "/runs", "POST")
+    assert status == 202 and "credentials" not in task_run["request"]["options"]
+    manager.thread.join(15)
+
+
 def test_session_token_and_origin_required(http):
     call, manager, base = http
     status, page = call("/")
