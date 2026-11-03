@@ -108,7 +108,7 @@ class ConfigDocument:
         names = self.environments()
         if not names and not selected:
             return ""
-        selected = selected or self.data.get("environment")
+        selected = selected or (self.data.get("environment") if isinstance(self.data, dict) else None)
         if not isinstance(selected, str) or selected not in names:
             raise ValueError("请选择 config/config.yaml 中已定义的环境")
         return selected
