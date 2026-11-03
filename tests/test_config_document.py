@@ -13,6 +13,15 @@ def document(tmp_path, text):
     return ConfigDocument.load(tmp_path)
 
 
+@pytest.mark.parametrize("source", ["single-value\n", "- one\n- two\n", "null\n"])
+def test_non_mapping_config_has_no_selectable_environments(tmp_path, source):
+    doc = document(tmp_path, source)
+    assert doc.environments() == []
+    assert doc.environment() == ""
+    with pytest.raises(ValueError, match="请选择"):
+        doc.environment("prod")
+
+
 @pytest.mark.parametrize("source,action,path,value,key,expected", [
     ("host: old\n", "set", ["host"], "new", None, {"host": "new"}),
     ("service.auth: old\n", "set", ["service.auth"], "new", None, {"service.auth": "new"}),

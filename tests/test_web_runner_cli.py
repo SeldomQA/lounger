@@ -15,6 +15,13 @@ from lounger import cli
 from lounger.web_runner import browser_url, main
 
 
+def test_legacy_server_imports_use_production_implementation():
+    from lounger.web_runner.server import _RequestHandler, _ThreadingHTTPServer
+
+    assert _RequestHandler is web_runner_mod._RequestHandler
+    assert _ThreadingHTTPServer is web_runner_mod._ThreadingHTTPServer
+
+
 class _FakeServer:
     """Stands in for _ThreadingHTTPServer: records the bind address."""
 
